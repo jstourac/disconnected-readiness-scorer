@@ -248,19 +248,19 @@ class TestRenderMarkdown:
         result = render_markdown("READY", [], "repo")
         assert "READY" in result
 
-    @patch("main.Path")
-    def test_uses_builtin_renderer_without_jinja(self, mock_path_cls):
-        template_content = "Score: {{ score }}"
-        mock_path_inst = MagicMock()
-        mock_path_cls.return_value.__truediv__ = lambda s, o: mock_path_inst
-        mock_path_inst.__truediv__ = lambda s, o: mock_path_inst
-        mock_path_inst.read_text.return_value = template_content
-
-        with patch.dict(sys.modules, {"jinja2": None}):
-            with patch("main._render_template_simple", return_value="Score: READY") as mock_simple:
-                result = render_markdown("READY", [], "repo")
-                mock_simple.assert_called_once()
-                assert result == "Score: READY"
+    def test_uses_builtin_renderer_without_jinja(self):
+        saved = sys.modules.get("jinja2")
+        sys.modules["jinja2"] = None
+        try:
+            result = render_markdown("READY", [], "repo")
+        except AttributeError:
+            pytest.fail("Fallback did not catch jinja2 unavailability")
+        finally:
+            if saved is not None:
+                sys.modules["jinja2"] = saved
+            else:
+                sys.modules.pop("jinja2", None)
+        assert "READY" in result
 
 
 # --- main (integration-level) ---

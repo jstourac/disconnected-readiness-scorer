@@ -193,29 +193,34 @@ def build_manifest(operator_root: Union[str, Path]) -> Manifest:
     return manifest
 
 
-def run(operator_path: str) -> dict:
-    """Run the manifest builder and return structured output."""
-    manifest = build_manifest(operator_path)
+def run(operator_path: str) -> "RuleResult":
+    """Run the manifest builder and return a RuleResult."""
+    try:
+        from rules.common import Finding, RuleResult
+    except ModuleNotFoundError:
+        from common import Finding, RuleResult
 
+    manifest = build_manifest(operator_path)
     all_env_vars = sorted(set(e.env_var for e in manifest.images))
 
-    return {
-        "total_images": len(all_env_vars),
-        "total_components": len(manifest.components),
-        "components": manifest.components,
-        "known_issues": manifest.known_issues,
-        "all_env_vars": all_env_vars,
-        "image_details": [
-            {
-                "env_var": e.env_var,
-                "component": e.component,
-                "manifest_key": e.manifest_key,
-                "source_file": e.source_file,
-                "source_line": e.source_line,
-            }
-            for e in manifest.images
-        ],
-    }
+    result = RuleResult(rule="operator-manifest")
+    result.findings.append(Finding(
+        severity="info",
+        file="",
+        line=0,
+        image="",
+        message=f"Operator manifest: {len(all_env_vars)} unique RELATED_IMAGE env vars "
+                f"across {len(manifest.components)} components.",
+    ))
+    for issue in manifest.known_issues:
+        result.findings.append(Finding(
+            severity="warning",
+            file="component-params-env.yaml",
+            line=0,
+            image=issue,
+            message=f"Known issue in operator manifest: {issue}",
+        ))
+    return result
 
 
 if __name__ == "__main__":
@@ -225,5 +230,13 @@ if __name__ == "__main__":
         print("Usage: operator_manifest.py <path-to-operator-repo>", file=sys.stderr)
         sys.exit(1)
     path = sys.argv[1]
-    result = run(path)
-    print(json.dumps(result, indent=2))
+    r = run(path)
+    print(json.dumps({
+        "rule": r.rule,
+        "passed": r.passed,
+        "findings": [
+            {"severity": f.severity, "file": f.file, "line": f.line,
+             "image": f.image, "message": f.message}
+            for f in r.findings
+        ],
+    }, indent=2))

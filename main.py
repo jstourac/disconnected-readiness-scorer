@@ -88,17 +88,11 @@ def resolve_rules(rules_arg):
 
 def load_manifest(operator_path):
     mod = importlib.import_module("rules.operator_manifest")
-    if not operator_path:
-        operator_path = tempfile.mkdtemp(prefix="odh-operator-")
-        target = Path(operator_path)
+    target = Path(operator_path)
+    if not (target / ".git").exists():
         print("  Cloning opendatahub-operator (shallow)...", file=sys.stderr)
         mod.clone_operator(target)
-    else:
-        target = Path(operator_path)
-        if not (target / ".git").exists():
-            print("  Cloning opendatahub-operator (shallow)...", file=sys.stderr)
-            mod.clone_operator(target)
-    manifest = mod.build_manifest(operator_path)
+    manifest = mod.build_manifest(str(target))
     env_vars = set(e.env_var for e in manifest.images)
     return manifest, env_vars
 
@@ -288,8 +282,7 @@ def render_markdown(score, results, repo_name):
         return _render_template_simple(template_str, context)
 
 
-def main(argv=None):
-    args = parse_args(argv)
+def _run(args, operator_path):
     repo_root = os.path.abspath(args.repo_root)
     repo_name = os.path.basename(repo_root)
     selected = resolve_rules(args.rules)
@@ -307,7 +300,7 @@ def main(argv=None):
                 break
 
     if need_manifest:
-        manifest, manifest_env_vars = load_manifest(args.operator_path)
+        manifest, manifest_env_vars = load_manifest(operator_path)
 
     results = []
     for key in selected:
@@ -316,7 +309,7 @@ def main(argv=None):
 
         if entry.get("is_manifest_rule"):
             if manifest is None:
-                manifest, manifest_env_vars = load_manifest(args.operator_path)
+                manifest, manifest_env_vars = load_manifest(operator_path)
             results.append(adapt_manifest_result(manifest))
             continue
 
@@ -341,6 +334,16 @@ def main(argv=None):
         print(report)
 
     return 0 if score != "NOT READY" else 1
+
+
+def main(argv=None):
+    args = parse_args(argv)
+
+    if args.operator_path:
+        return _run(args, args.operator_path)
+
+    with tempfile.TemporaryDirectory(prefix="odh-operator-") as tmp_dir:
+        return _run(args, tmp_dir)
 
 
 if __name__ == "__main__":

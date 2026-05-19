@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
+from rules.common import RuleResult
 from rules.operator_manifest import (
     clone_operator, parse_component_images, parse_known_issues,
     build_manifest, run, ImageEntry, COMPONENTS_PATH,
@@ -226,20 +227,18 @@ class TestBuildManifest:
 
 
 class TestRun:
-    def test_returns_dict_structure(self, tmp_path):
+    def test_returns_rule_result(self, tmp_path):
         result = run(str(tmp_path))
-        assert "total_images" in result
-        assert "total_components" in result
-        assert "components" in result
-        assert "known_issues" in result
-        assert "all_env_vars" in result
-        assert "image_details" in result
+        assert isinstance(result, RuleResult)
+        assert result.rule == "operator-manifest"
+        assert isinstance(result.passed, bool)
+        assert isinstance(result.findings, list)
 
     def test_empty_manifest(self, tmp_path):
         result = run(str(tmp_path))
-        assert result["total_images"] == 0
-        assert result["total_components"] == 0
-        assert result["image_details"] == []
+        assert result.passed is True
+        info_msgs = [f.message for f in result.findings if f.severity == "info"]
+        assert any("0 unique RELATED_IMAGE" in m for m in info_msgs)
 
     def test_deduplicates_env_vars_in_count(self, tmp_path):
         comp_dir = tmp_path / COMPONENTS_PATH / "comp"
@@ -247,15 +246,15 @@ class TestRun:
         (comp_dir / "a.go").write_text('"RELATED_IMAGE_FOO"')
         (comp_dir / "b.go").write_text('"RELATED_IMAGE_FOO"')
         result = run(str(tmp_path))
-        assert result["total_images"] == 1
+        info_msgs = [f.message for f in result.findings if f.severity == "info"]
+        assert any("1 unique RELATED_IMAGE" in m for m in info_msgs)
 
-    def test_image_details_populated(self, tmp_path):
-        comp_dir = tmp_path / COMPONENTS_PATH / "dashboard"
-        comp_dir.mkdir(parents=True)
-        (comp_dir / "images.go").write_text('"my-key": "RELATED_IMAGE_DASH"')
+    def test_known_issues_become_warnings(self, tmp_path):
+        (tmp_path / COMPONENTS_PATH).mkdir(parents=True)
+        (tmp_path / "component-params-env.yaml").write_text(
+            "# known_issues:\n- image: RELATED_IMAGE_BROKEN\n"
+        )
         result = run(str(tmp_path))
-        assert len(result["image_details"]) == 1
-        detail = result["image_details"][0]
-        assert detail["env_var"] == "RELATED_IMAGE_DASH"
-        assert detail["component"] == "dashboard"
-        assert detail["manifest_key"] == "my-key"
+        warn_findings = [f for f in result.findings if f.severity == "warning"]
+        assert len(warn_findings) == 1
+        assert warn_findings[0].image == "RELATED_IMAGE_BROKEN"
