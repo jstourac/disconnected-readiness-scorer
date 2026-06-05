@@ -261,6 +261,45 @@ Opt-out file for the `params_env` rule. Place it in the target repo root to excl
 
 Each entry requires `key` and `reason`. The optional `reference` field can link to a tracking issue.
 
+## Reporting False Positives
+
+When the scanner flags something that is not a real disconnected issue, add an exception to unblock your PR.
+
+### Add a per-repo exception
+
+Create `.disconnected-readiness/exceptions.yaml` in your repository (or add to an existing one). Each exception requires a scope filter so it only applies to specific findings — you cannot disable an entire rule.
+
+| Field       | Required | Description                                                                 |
+|-------------|----------|-----------------------------------------------------------------------------|
+| `rule`      | yes      | Rule name (e.g. `no-runtime-egress`)                                        |
+| `path`      | *        | Glob pattern matched against finding file path (e.g. `internal/client.go`)  |
+| `image`     | *        | Glob pattern matched against finding image ref                              |
+| `message`   | *        | Glob pattern matched against finding message (use `*text*` for substring)   |
+| `reason`    | yes      | Why this is not a real disconnected issue                                   |
+| `reference` | no       | Tracking URL (GitHub Issue or Jira ticket) if this is a scanner bug         |
+
+\* At least one of `path`, `image`, or `message` is required.
+
+```yaml
+exceptions:
+  - rule: no-runtime-egress
+    path: "internal/client.go"
+    reason: "Calls cluster-internal Kubernetes API at kubernetes.default.svc"
+    # reference: "https://issues.redhat.com/browse/RHOAIENG-XXXXX"  # optional, for scanner bugs
+```
+
+Add this file in the same PR that is being blocked. The scanner loads it automatically and downgrades matching findings to info severity.
+
+If you think a finding is caused by a bug in the scanner (not just a repo-specific exclusion), file a Jira ticket under RHOAIENG and add the ticket URL as a `reference` in your exception entry. The AI Core Platform team triages these and either fixes the rule or confirms the exception is permanent.
+
+### Common Errors
+
+**"at least one scope filter"** — Include `path`, `image`, or `message` to limit the exception. Disabling an entire rule is not allowed.
+
+**"'repo' field is not allowed"** — Per-repo exceptions apply only to the current repository. Remove the `repo:` field.
+
+**"unknown field(s)"** — Check for typos in field names. Valid fields: `rule`, `path`, `image`, `message`, `reason`, `reference`.
+
 ## PR Integration
 
 The primary use case for this tool is running it against Pull Requests in RHOAI component repositories, catching disconnected-breaking changes **before they merge** rather than weeks later during manual testing.

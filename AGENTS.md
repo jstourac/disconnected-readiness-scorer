@@ -83,7 +83,9 @@ All rules output JSON to stdout with `rule`, `passed`, and `findings` fields.
 **Config files in `config/`:**
 
 - `known_mirrors.yaml` — Approved registries and PyPI mirrors. Rules treat pulls from these as safe.
-- `exceptions.yaml` — Exception rules that downgrade matching blocker findings to info severity. Supports matching by rule name (comma-separated), file path glob, image glob, message substring, and repo name. Each exception requires a reason. Loaded by the orchestrator via `--exceptions` or defaults to `config/exceptions.yaml`.
+- `exceptions.yaml` — Central exception rules that downgrade matching blocker findings to info severity. Supports matching by rule name (comma-separated), file path glob, image glob, message substring, and repo name. Each exception requires a reason. Loaded by the orchestrator via `--exceptions` or defaults to `config/exceptions.yaml`.
+
+**Per-repo exceptions:** Target repositories can provide their own exceptions at `.disconnected-readiness/exceptions.yaml` (same YAML format as central). Per-repo exceptions have stricter validation: `rule`, `reason`, and at least one scope filter (`path`, `image`, or `message`) are required; `repo` field is forbidden; unknown fields are rejected. The optional `reference` field accepts a tracking URL (GitHub Issue or Jira ticket) for scanner bugs. The orchestrator loads per-repo exceptions automatically and merges them with central exceptions before applying.
 
 **Report rendering:** `templates/report.md` uses Jinja2-style `{{ }}` placeholders. The orchestrator tries `import jinja2` first; falls back to a built-in micro-renderer that handles `{{ var }}`, `{{ var | upper }}`, and `{% for %}` blocks.
 

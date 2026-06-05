@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from main import (
+    _build_exception_snippets,
+    _build_false_positive_section,
     _get_repo_name,
     _render_template_simple,
     adapt_manifest_result,
@@ -19,6 +21,7 @@ from main import (
     render_json,
     render_markdown,
     resolve_rules,
+    validate_repo_exceptions,
     main,
 )
 from rules.common import Finding, RuleResult
@@ -331,6 +334,46 @@ class TestMain:
             assert exit_code == 0
             mock_load.assert_called_once()
 
+    @patch("main.importlib.import_module")
+    def test_per_repo_exception_applied_through_main(self, mock_import, tmp_path):
+        fake_mod = MagicMock()
+        fake_mod.run.return_value = RuleResult(
+            rule="no-runtime-egress", passed=False,
+            findings=[Finding("blocker", "internal/client.go", 42, "", "http.Get call")],
+        )
+        fake_mod.detect_image_pattern.return_value = "none"
+        mock_import.return_value = fake_mod
+
+        _write_repo_exceptions(tmp_path,
+            "exceptions:\n"
+            "  - rule: no-runtime-egress\n"
+            '    path: "internal/client.go"\n'
+            '    reason: "Calls cluster-internal Kubernetes API"\n'
+        )
+
+        exit_code = main([
+            str(tmp_path), "--rules", "egress", "--report", "json",
+        ])
+        assert exit_code == 0
+
+    @patch("main.importlib.import_module")
+    def test_invalid_repo_exception_produces_blocker_not_crash(self, mock_import, tmp_path):
+        fake_mod = MagicMock()
+        fake_mod.run.return_value = RuleResult(rule="no-image-tags", passed=True)
+        fake_mod.detect_image_pattern.return_value = "none"
+        mock_import.return_value = fake_mod
+
+        _write_repo_exceptions(tmp_path,
+            "exceptions:\n"
+            "  - rule: no-runtime-egress\n"
+            '    reason: "missing scope filter"\n'
+        )
+
+        exit_code = main([
+            str(tmp_path), "--rules", "tags", "--report", "json",
+        ])
+        assert exit_code == 1
+
 
 # --- load_exceptions ---
 
@@ -355,6 +398,12 @@ class TestLoadExceptions:
         exc_file.write_text("exceptions: []\n")
         assert load_exceptions(str(exc_file)) == []
 
+    def test_non_mapping_root_raises(self, tmp_path):
+        exc_file = tmp_path / "exceptions.yaml"
+        exc_file.write_text("- rule: no-image-tags\n  reason: test\n")
+        with pytest.raises(ValueError, match="must be a mapping"):
+            load_exceptions(str(exc_file))
+
     def test_missing_reason_raises(self, tmp_path):
         exc_file = tmp_path / "exceptions.yaml"
         exc_file.write_text(
@@ -363,6 +412,44 @@ class TestLoadExceptions:
             '    path: "deploy.yaml"\n'
         )
         with pytest.raises(ValueError, match="missing required 'reason' field"):
+            load_exceptions(str(exc_file))
+
+    def test_missing_rule_raises(self, tmp_path):
+        exc_file = tmp_path / "exceptions.yaml"
+        exc_file.write_text(
+            "exceptions:\n"
+            '  - path: "deploy.yaml"\n'
+            '    reason: "test"\n'
+        )
+        with pytest.raises(ValueError, match="missing required 'rule' field"):
+            load_exceptions(str(exc_file))
+
+    def test_non_dict_entry_raises(self, tmp_path):
+        exc_file = tmp_path / "exceptions.yaml"
+        exc_file.write_text("exceptions:\n  - no-image-tags\n")
+        with pytest.raises(ValueError, match="must be a mapping"):
+            load_exceptions(str(exc_file))
+
+    def test_malformed_yaml_raises(self, tmp_path):
+        exc_file = tmp_path / "exceptions.yaml"
+        exc_file.write_text('exceptions:\n  - rule: "missing close quote\n')
+        with pytest.raises(ValueError, match="Failed to parse"):
+            load_exceptions(str(exc_file))
+
+    def test_unreadable_file_raises(self, tmp_path):
+        exc_dir = tmp_path / "exceptions.yaml"
+        exc_dir.mkdir()
+        with pytest.raises(ValueError, match="Cannot read"):
+            load_exceptions(str(exc_dir))
+
+    def test_typo_in_key_raises(self, tmp_path):
+        exc_file = tmp_path / "exceptions.yaml"
+        exc_file.write_text(
+            "exception:\n"
+            "  - rule: no-image-tags\n"
+            '    reason: "test"\n'
+        )
+        with pytest.raises(ValueError, match="does not contain an 'exceptions' key"):
             load_exceptions(str(exc_file))
 
     def test_fallback_parser_handles_simple_format(self, tmp_path):
@@ -621,3 +708,224 @@ class TestParseArgsExceptions:
     def test_exceptions_default_none(self):
         args = parse_args(["."])
         assert args.exceptions is None
+
+
+# --- validate_repo_exceptions ---
+
+
+
+def _write_repo_exceptions(tmp_path, yaml_content):
+    """Create .disconnected-readiness/exceptions.yaml in tmp_path, return the file path."""
+    exc_dir = tmp_path / ".disconnected-readiness"
+    exc_dir.mkdir(exist_ok=True)
+    exc_file = exc_dir / "exceptions.yaml"
+    exc_file.write_text(yaml_content)
+    return exc_file
+
+
+_VALID_REPO_EXCEPTION = {
+    "rule": "no-runtime-egress",
+    "path": "internal/client.go",
+    "reason": "Calls cluster-internal API",
+}
+
+
+def _repo_exception(**overrides):
+    """Build a per-repo exception dict from the valid base, applying overrides."""
+    exc = dict(_VALID_REPO_EXCEPTION)
+    for k, v in overrides.items():
+        if v is None:
+            exc.pop(k, None)
+        else:
+            exc[k] = v
+    return exc
+
+
+class TestValidateRepoExceptions:
+    @pytest.mark.parametrize(
+        "desc, overrides, error_match",
+        [
+            # accepted cases
+            ("valid with path scope", {}, None),
+            ("valid with image scope", {"path": None, "image": "quay.io/org/img:*", "rule": "no-image-tags"}, None),
+            ("valid with message scope", {"path": None, "message": "http.DefaultClient"}, None),
+            ("no reference accepted", {}, None),
+            ("with reference accepted", {"reference": "https://example.com/issue/1"}, None),
+            # rejected cases (rule and reason validated by load_exceptions, not here)
+            ("missing scope filter", {"path": None}, "at least one scope filter"),
+            ("empty string scope filter", {"path": ""}, "at least one scope filter"),
+            ("repo field forbidden", {"repo": "opendatahub-io/odh-dashboard"}, "'repo' field is not allowed"),
+            ("unknown field rejected", {"typo_field": "value"}, "unknown field"),
+            ("missing rule rejected", {"rule": None}, "missing required 'rule' field"),
+            ("missing reason rejected", {"reason": None}, "missing required 'reason' field"),
+            ("non-string path rejected", {"path": 123}, "'path' must be a string"),
+            ("non-string image rejected", {"path": None, "image": 42, "rule": "no-image-tags"}, "'image' must be a string"),
+            ("non-string message rejected", {"path": None, "message": True}, "'message' must be a string"),
+        ],
+        ids=lambda x: x if isinstance(x, str) else "",
+    )
+    def test_validate_repo_exception(self, desc, overrides, error_match):
+        exceptions = [_repo_exception(**overrides)]
+        if error_match is None:
+            validate_repo_exceptions(exceptions, "test.yaml")
+        else:
+            with pytest.raises(ValueError, match=error_match):
+                validate_repo_exceptions(exceptions, "test.yaml")
+
+    def test_non_dict_entry_rejected(self):
+        with pytest.raises(ValueError, match="must be a mapping"):
+            validate_repo_exceptions(["not-a-dict"], "test.yaml")
+
+
+# --- per-repo exception loading ---
+
+class TestRepoExceptionLoading:
+    def test_repo_exceptions_loaded_from_target_repo(self, tmp_path):
+        exc_file = _write_repo_exceptions(tmp_path,
+            "exceptions:\n"
+            "  - rule: no-runtime-egress\n"
+            '    path: "internal/client.go"\n'
+            '    reason: "Calls cluster-internal API"\n'
+        )
+        exceptions = load_exceptions(str(exc_file))
+        assert len(exceptions) == 1
+        assert exceptions[0]["rule"] == "no-runtime-egress"
+        validate_repo_exceptions(exceptions, str(exc_file))
+
+    def test_repo_exception_missing_rule_rejected_by_load(self, tmp_path):
+        exc_file = _write_repo_exceptions(tmp_path,
+            "exceptions:\n"
+            '  - path: "f.go"\n'
+            '    reason: "test"\n'
+        )
+        with pytest.raises(ValueError, match="missing required 'rule' field"):
+            load_exceptions(str(exc_file))
+
+    def test_repo_exception_missing_reason_rejected_by_load(self, tmp_path):
+        exc_file = _write_repo_exceptions(tmp_path,
+            "exceptions:\n"
+            "  - rule: no-runtime-egress\n"
+            '    path: "f.go"\n'
+        )
+        with pytest.raises(ValueError, match="missing required 'reason' field"):
+            load_exceptions(str(exc_file))
+
+    def test_repo_exceptions_missing_file_skipped(self, tmp_path):
+        exc_path = tmp_path / ".disconnected-readiness" / "exceptions.yaml"
+        exceptions = load_exceptions(str(exc_path))
+        assert exceptions == []
+
+    def test_repo_exceptions_merged_with_central(self):
+        central = [{"rule": "no-image-tags", "reason": "central rule"}]
+        repo = [{
+            "rule": "no-runtime-egress",
+            "path": "f.go",
+            "reason": "repo rule",
+        }]
+        merged = central + repo
+        results = [
+            RuleResult(rule="no-image-tags", passed=False,
+                       findings=[Finding("blocker", "a.yaml", 1, "img", "tag")]),
+            RuleResult(rule="no-runtime-egress", passed=False,
+                       findings=[Finding("blocker", "f.go", 5, "", "egress")]),
+        ]
+        apply_exceptions(results, merged, "repo")
+        assert results[0].findings[0].severity == "info"
+        assert results[1].findings[0].severity == "info"
+
+    def test_repo_exception_downgrades_finding(self, tmp_path):
+        exc_file = _write_repo_exceptions(tmp_path,
+            "exceptions:\n"
+            "  - rule: no-image-tags\n"
+            '    path: "deploy/*.yaml"\n'
+            '    reason: "Tags replaced by RELATED_IMAGE at deploy time"\n'
+        )
+        exceptions = load_exceptions(str(exc_file))
+        validate_repo_exceptions(exceptions, str(exc_file))
+
+        results = [RuleResult(
+            rule="no-image-tags", passed=False,
+            findings=[Finding("blocker", "deploy/app.yaml", 10, "img:latest", "mutable tag")],
+        )]
+        apply_exceptions(results, exceptions, "test-repo")
+        assert results[0].findings[0].severity == "info"
+        assert results[0].passed is True
+        assert "[Exception:" in results[0].findings[0].message
+
+
+# --- exception snippets and false positive section ---
+
+class TestExceptionSnippets:
+    def test_builds_snippets_from_blockers_only(self):
+        results = [RuleResult(rule="no-image-tags", findings=[
+            Finding("blocker", "deploy.yaml", 10, "img:latest", "mutable tag"),
+            Finding("warning", "src/main.go", 5, "img:v1", "source tag"),
+            Finding("info", "test/t.go", 1, "img:dev", "test file"),
+        ])]
+        snippets = _build_exception_snippets(results)
+        assert len(snippets) == 1
+        assert snippets[0]["rule"] == "no-image-tags"
+        assert snippets[0]["file"] == "deploy.yaml"
+
+    def test_snippets_exclude_empty_fields(self):
+        results = [RuleResult(rule="no-runtime-egress", findings=[
+            Finding("blocker", "client.go", 5, "", "egress call"),
+        ])]
+        snippets = _build_exception_snippets(results)
+        assert "image" not in snippets[0]
+        assert snippets[0]["message"] == "egress call"
+
+    def test_empty_when_no_blockers(self):
+        results = [RuleResult(rule="r", findings=[
+            Finding("info", "f", 1, "", "ok"),
+        ])]
+        assert _build_exception_snippets(results) == []
+
+    def test_false_positive_section_empty_when_no_snippets(self):
+        assert _build_false_positive_section([]) == ""
+
+    def test_false_positive_section_shows_count_and_link(self):
+        snippets = [
+            {"rule": "r1", "file": "a.go", "line": 1, "image": "", "message": "m1"},
+            {"rule": "r2", "file": "b.go", "line": 2, "image": "", "message": "m2"},
+        ]
+        section = _build_false_positive_section(snippets)
+        assert "2 blocker findings" in section
+        assert ".disconnected-readiness/exceptions.yaml" in section
+        assert "#reporting-false-positives" in section
+
+    def test_false_positive_section_singular_for_one_blocker(self):
+        snippets = [{"rule": "r", "file": "f", "line": 1, "image": "", "message": "m"}]
+        section = _build_false_positive_section(snippets)
+        assert "1 blocker finding" in section
+
+    def test_markdown_report_includes_false_positive_section(self):
+        results = [RuleResult(rule="no-image-tags", passed=False, findings=[
+            Finding("blocker", "deploy.yaml", 10, "img:latest", "mutable tag"),
+        ])]
+        output = render_markdown("NOT READY", results, "test-repo")
+        assert "Reporting False Positives" in output
+        assert ".disconnected-readiness/exceptions.yaml" in output
+
+    def test_markdown_report_omits_section_when_no_blockers(self):
+        results = [RuleResult(rule="r", findings=[
+            Finding("info", "f", 1, "", "ok"),
+        ])]
+        output = render_markdown("READY", results, "repo")
+        assert "Reporting False Positives" not in output
+
+    def test_json_report_includes_false_positive_help(self):
+        results = [RuleResult(rule="no-image-tags", passed=False, findings=[
+            Finding("blocker", "deploy.yaml", 10, "img:latest", "mutable tag"),
+        ])]
+        data = json.loads(render_json("NOT READY", results, "test-repo"))
+        assert "false_positive_help" in data
+        assert "exception_snippets" in data["false_positive_help"]
+        assert len(data["false_positive_help"]["exception_snippets"]) == 1
+
+    def test_json_report_omits_help_when_no_blockers(self):
+        results = [RuleResult(rule="r", findings=[
+            Finding("info", "f", 1, "", "ok"),
+        ])]
+        data = json.loads(render_json("READY", results, "repo"))
+        assert "false_positive_help" not in data

@@ -21,6 +21,7 @@ from rules.common import Finding, RuleResult
 from rules.production_scope import compute_production_scope
 
 SEVERITY_ORDER = {"blocker": 0, "info": 1}
+REPO_EXCEPTIONS_PATH = ".disconnected-readiness/exceptions.yaml"
 
 RULE_REGISTRY = {
     "csv": {
@@ -84,14 +85,45 @@ def load_exceptions(config_path):
     """Load exception rules from a YAML config file."""
     if not Path(config_path).exists():
         return []
-    text = Path(config_path).read_text()
+    try:
+        text = Path(config_path).read_text()
+    except OSError as exc:
+        raise ValueError(f"Cannot read {config_path}: {exc}") from exc
     try:
         import yaml
-        raw = yaml.safe_load(text)
-        exceptions = raw.get("exceptions") or [] if isinstance(raw, dict) else []
+        try:
+            raw = yaml.safe_load(text)
+        except yaml.YAMLError as exc:
+            raise ValueError(
+                f"Failed to parse {config_path}: {exc}"
+            ) from exc
+        if raw is None:
+            exceptions = []
+        elif not isinstance(raw, dict):
+            raise ValueError(
+                f"{config_path} must be a mapping with an 'exceptions' key, "
+                f"got {type(raw).__name__}"
+            )
+        else:
+            if raw and "exceptions" not in raw:
+                raise ValueError(
+                    f"{config_path} does not contain an 'exceptions' key. "
+                    f"Found keys: {', '.join(raw.keys())}"
+                )
+            exceptions = raw.get("exceptions") or []
     except ImportError:
         exceptions = _parse_exceptions_fallback(text)
     for i, exc in enumerate(exceptions):
+        if not isinstance(exc, dict):
+            raise ValueError(
+                f"Exception entry {i + 1} in {config_path} "
+                f"must be a mapping, got {type(exc).__name__}"
+            )
+        if not exc.get("rule"):
+            raise ValueError(
+                f"Exception entry {i + 1} in {config_path} "
+                f"is missing required 'rule' field"
+            )
         if not exc.get("reason"):
             raise ValueError(
                 f"Exception entry {i + 1} (rule={exc.get('rule', '?')}) "
@@ -114,6 +146,60 @@ def _path_matches(filepath: str, pattern: str) -> bool:
         if fnmatch(filepath, pattern[3:]):
             return True
     return fnmatch(filepath.rsplit("/", 1)[-1], pattern)
+
+
+def validate_repo_exceptions(exceptions, config_path):
+    """Validate per-repo exceptions — self-contained, does not depend on load_exceptions.
+
+    Checks all constraints: required fields (rule, reason), unknown fields,
+    forbidden repo field, scope filter requirement, and type correctness.
+    """
+    known_fields = {"rule", "path", "image", "message", "reason", "reference", "repo"}
+    for i, exc in enumerate(exceptions):
+        if not isinstance(exc, dict):
+            raise ValueError(
+                f"Exception entry {i + 1} in {config_path} "
+                f"must be a mapping, got {type(exc).__name__}"
+            )
+
+        label = f"Exception entry {i + 1} (rule={exc.get('rule', '?')}) in {config_path}"
+
+        if not exc.get("rule"):
+            raise ValueError(
+                f"Exception entry {i + 1} in {config_path} "
+                f"is missing required 'rule' field"
+            )
+        if not exc.get("reason"):
+            raise ValueError(
+                f"{label} is missing required 'reason' field"
+            )
+
+        unknown = set(exc.keys()) - known_fields
+        if unknown:
+            raise ValueError(
+                f"{label} has unknown field(s): {', '.join(sorted(unknown))}. "
+                f"Valid fields: {', '.join(sorted(known_fields))}"
+            )
+
+        if "repo" in exc:
+            raise ValueError(
+                f"{label}: 'repo' field is not allowed in per-repo exception files"
+            )
+
+        for field in ("path", "image", "message"):
+            val = exc.get(field)
+            if val is not None and not isinstance(val, str):
+                raise ValueError(
+                    f"{label}: '{field}' must be a string, "
+                    f"got {type(val).__name__}"
+                )
+
+        has_scope = any(exc.get(f) for f in ("path", "image", "message"))
+        if not has_scope:
+            raise ValueError(
+                f"{label} must have at least one scope filter "
+                f"(path, image, or message)"
+            )
 
 
 def apply_exceptions(results, exceptions, repo_name):
@@ -202,6 +288,11 @@ def parse_args(argv=None):
         "--timing", action="store_true",
         help="Print per-step wall time to stderr for performance debugging.",
     )
+    parser.add_argument(
+        "--repo-exceptions",
+        help="Path to per-repo exceptions.yaml "
+             f"(default: <repo_root>/{REPO_EXCEPTIONS_PATH}).",
+    )
     return parser.parse_args(argv)
 
 
@@ -287,6 +378,7 @@ def print_summary(score, results):
 
 
 def render_json(score, results, repo_name):
+    snippets = _build_exception_snippets(results)
     data = {
         "repo": repo_name,
         "date": date.today().isoformat(),
@@ -307,6 +399,10 @@ def render_json(score, results, repo_name):
             for r in results
         ],
     }
+    if snippets:
+        data["false_positive_help"] = {
+            "exception_snippets": snippets,
+        }
     return json.dumps(data, indent=2)
 
 
@@ -372,6 +468,45 @@ def _escape_md_cell(value):
     return s.replace("<", "&lt;").replace(">", "&gt;")
 
 
+def _build_exception_snippets(results):
+    """Build pre-filled exception YAML entries from blocker findings."""
+    snippets = []
+    for r in results:
+        for f in r.findings:
+            if f.severity != "blocker":
+                continue
+            snippet = {"rule": r.rule, "file": f.file, "line": f.line}
+            if f.image:
+                snippet["image"] = f.image
+            if f.message:
+                snippet["message"] = f.message
+            snippets.append(snippet)
+    return snippets
+
+
+def _build_false_positive_section(snippets):
+    """Build the Reporting False Positives markdown section from blocker snippets."""
+    if not snippets:
+        return ""
+
+    count = len(snippets)
+    noun = "finding" if count == 1 else "findings"
+    readme_url = (
+        "https://github.com/opendatahub-io/disconnected-readiness-scorer"
+        "#reporting-false-positives"
+    )
+    lines = [
+        "## Reporting False Positives",
+        "",
+        f"{count} blocker {noun} above may be false positives.",
+        f"To unblock your PR, add an exception to `{REPO_EXCEPTIONS_PATH}`.",
+        f"See [{readme_url}]({readme_url}) for the format and required fields.",
+        "",
+    ]
+
+    return "\n".join(lines)
+
+
 def render_markdown(score, results, repo_name):
     template_path = Path(__file__).parent / "templates" / "report.md"
     try:
@@ -403,6 +538,9 @@ def render_markdown(score, results, repo_name):
             for r in results
         ],
         "blockers": blocker_rows,
+        "false_positive_section": _build_false_positive_section(
+            _build_exception_snippets(results)
+        ),
     }
 
     try:
@@ -433,6 +571,51 @@ def _get_repo_name(repo_root):
     except (subprocess.CalledProcessError, OSError):
         pass
     return os.path.basename(repo_root)
+
+
+def _load_all_exceptions(args, repo_root):
+    """Load central and per-repo exceptions, validate, and merge.
+
+    Returns (merged_exceptions, error_result_or_None).
+    """
+    exceptions_path = args.exceptions or str(
+        Path(__file__).parent / "config" / "exceptions.yaml"
+    )
+    exceptions = load_exceptions(exceptions_path)
+
+    repo_exceptions_path = args.repo_exceptions or str(
+        Path(repo_root) / REPO_EXCEPTIONS_PATH
+    )
+    if args.repo_exceptions and not Path(repo_exceptions_path).exists():
+        print(
+            f"  Warning: --repo-exceptions path does not exist: "
+            f"{repo_exceptions_path}",
+            file=sys.stderr,
+        )
+    try:
+        repo_exceptions = load_exceptions(repo_exceptions_path)
+        if repo_exceptions:
+            validate_repo_exceptions(repo_exceptions, repo_exceptions_path)
+            print(
+                f"  Loaded {len(repo_exceptions)} per-repo exception(s) "
+                f"from {REPO_EXCEPTIONS_PATH}",
+                file=sys.stderr,
+            )
+            exceptions = exceptions + repo_exceptions
+    except ValueError as exc:
+        error_result = RuleResult(
+            rule="repo-exceptions-validation", passed=False
+        )
+        error_result.findings.append(Finding(
+            severity="blocker",
+            file=repo_exceptions_path,
+            line=0,
+            image="",
+            message=f"Invalid per-repo exceptions file: {exc}",
+        ))
+        return exceptions, error_result
+
+    return exceptions, None
 
 
 def _run(args, operator_path):
@@ -527,8 +710,9 @@ def _run(args, operator_path):
         _tlog(f"rule {key}", time.monotonic() - t0)
         results.append(result)
 
-    exceptions_path = args.exceptions or str(Path(__file__).parent / "config" / "exceptions.yaml")
-    exceptions = load_exceptions(exceptions_path)
+    exceptions, error_result = _load_all_exceptions(args, repo_root)
+    if error_result:
+        results.insert(0, error_result)
     if exceptions:
         apply_exceptions(results, exceptions, repo_name)
 
