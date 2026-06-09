@@ -125,12 +125,21 @@ def _path_matches(filepath: str, pattern: str) -> bool:
 
     Handles ``**/X`` patterns by also matching ``X`` at the root level
     (fnmatch does not expand ``**`` as a recursive wildcard).
+    Patterns ending with ``/**`` also match the directory itself (without
+    trailing content), so ``**/config/scorecard/**`` matches both
+    ``config/scorecard`` and ``config/scorecard/foo.yaml``.
     Also matches against the filename alone for suffix patterns like ``*_test.go``.
     """
     if fnmatch(filepath, pattern):
         return True
     if pattern.startswith("**/"):
         if fnmatch(filepath, pattern[3:]):
+            return True
+    if pattern.endswith("/**"):
+        dir_pattern = pattern[:-3]
+        if fnmatch(filepath, dir_pattern):
+            return True
+        if dir_pattern.startswith("**/") and fnmatch(filepath, dir_pattern[3:]):
             return True
     return fnmatch(filepath.rsplit("/", 1)[-1], pattern)
 
