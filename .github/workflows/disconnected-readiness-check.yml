@@ -1,10 +1,17 @@
 name: Disconnected Readiness Check
 
-# This workflow is designed to run on Pull Requests only
-# It analyzes the PR's code for disconnected environment readiness
+# Reusable workflow for disconnected environment readiness checks.
+# Can also be triggered manually via the Actions UI.
 
 on:
   workflow_call:
+    inputs:
+      rules:
+        description: "Rules to run (empty = all default rules, or e.g. csv,tags,egress)"
+        required: false
+        type: string
+        default: ""
+  workflow_dispatch:
     inputs:
       rules:
         description: "Rules to run (empty = all default rules, or e.g. csv,tags,egress)"
