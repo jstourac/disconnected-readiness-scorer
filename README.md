@@ -104,9 +104,8 @@ When `manifest_source` is available (from operator manifest mapping), uses the o
 | Orphan Go `os.Getenv` call with no matching rendered manifest var | blocker |
 | `RELATED_IMAGE_*` var mapped from params.env not in operator manifest | blocker |
 | Unwired params.env key (defined but not consumed by kustomize) | info |
-| Key listed in `params_env_ignore` config | skipped |
 
-Supports `params_env_ignore` config for excluding keys. When the orchestrator provides operator manifest vars, cross-references mapped `RELATED_IMAGE_*` vars against the manifest.
+When the orchestrator provides operator manifest vars, cross-references mapped `RELATED_IMAGE_*` vars against the manifest.
 
 ### no-image-tags (alias: `tags`)
 
@@ -167,13 +166,13 @@ Validates Python dependencies against the known-bundled list. Packages not pre-i
 
 Parses the opendatahub-operator source to build the authoritative image manifest (100+ `RELATED_IMAGE_*` env vars across 18 components). Not run by default — included when `csv` or `params_env` detect a pattern needing cross-referencing, or when explicitly selected with `--rules manifest`.
 
-Also extracts **overlay paths** from the operator's Go source (`internal/controller/components/{component}/*_support.go`) to determine which kustomize overlays are actually deployed per platform. This allows `params-env-wiring` to scan only operator-deployed overlays, filtering out upstream overlays (e.g. `overlays/kubeflow`, `overlays/standalone`) that produce false positives. Override with `kustomize_overlays` in per-repo config.
+Also extracts **overlay paths** from the operator's Go source (`internal/controller/components/{component}/*_support.go`) to determine which kustomize overlays are actually deployed per platform. This allows `params-env-wiring` to scan only operator-deployed overlays, filtering out upstream overlays (e.g. `overlays/kubeflow`, `overlays/standalone`) that produce false positives.
 
 ### production-scope
 
 Not a rule itself, but a cross-cutting optimization for Go repos. Parses all Dockerfiles to find `go build` targets (supports multiple targets per Dockerfile), then runs `go list -deps -json` to compute the transitive dependency set. Files outside the production binary's import graph are downgraded from blocker to info. Only affects `.go` files; non-Go files use existing rule logic. Disabled with `--no-production-scope`.
 
-When operator manifest source folder mapping is available, also scopes YAML files to the operator-referenced kustomize/helm graph. When overlay paths are auto-detected (or configured via `kustomize_overlays`), passes them to `params-env-wiring` to restrict overlay scanning.
+When operator manifest source folder mapping is available, also scopes YAML files to the operator-referenced kustomize/helm graph. When overlay paths are auto-detected, passes them to `params-env-wiring` to restrict overlay scanning.
 
 ## Scoring
 
@@ -271,45 +270,17 @@ exceptions:
     reason: "Test directory — not deployed in production"
 ```
 
-### Per-repo config (`.disconnected-readiness/config.yaml`)
+### Configuration
 
-Single unified config in the target repo. All sections are optional.
-
-```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/opendatahub-io/disconnected-readiness-scorer/main/schemas/config.schema.json
-
-kustomize_overlays:
-  - config/overlays/odh
-  - config/overlays/rhoai
-
-known_mirrors:
-  bundled_packages:
-    - my-internal-package
-
-exceptions:
-  - rule: no-runtime-egress
-    path: "internal/client.go"
-    reason: "Calls cluster-internal Kubernetes API"
-
-params_env_ignore:
-  - key: odh_notebook_controller_image
-    reason: "Managed externally by the operator"
-```
-
-| Section | Description |
-|---------|-------------|
-| `kustomize_overlays` | Kustomize overlay dirs to validate. When set, only these dirs are built. |
-| `known_mirrors` | Per-repo additions to known-safe packages/mirrors. |
-| `exceptions` | Per-repo exception rules. Same format as central, but `repo` field forbidden. At least one scope filter required. |
-| `params_env_ignore` | params.env keys to exclude from validation. Each entry needs `key` and `reason`. |
+All configuration is managed centrally in `config/config.yaml`. No per-repository configuration files are supported.
 
 ## Reporting False Positives
 
 When the scanner flags something that is not a real disconnected issue, add an exception to unblock your PR.
 
-### Add a per-repo exception
+### Add an exception
 
-Add an `exceptions` section to `.disconnected-readiness/config.yaml` in your repository (or create the file). Each exception requires a scope filter so it only applies to specific findings — you cannot disable an entire rule.
+Exceptions are managed centrally in the scorer repository's `config/config.yaml` file. Each exception requires a scope filter so it only applies to specific findings — you cannot disable an entire rule.
 
 | Field       | Required | Description                                                                 |
 |-------------|----------|-----------------------------------------------------------------------------|

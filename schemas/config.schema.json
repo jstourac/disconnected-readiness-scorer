@@ -1,18 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Disconnected Readiness Scanner Config",
-  "description": "Configuration for the disconnected readiness scanner. Used by both central config (config/config.yaml) and per-repo config (.disconnected-readiness/config.yaml).",
+  "description": "Configuration for the disconnected readiness scanner. Used only by central config (config/config.yaml).",
   "type": "object",
   "properties": {
     "registries": {
       "type": "array",
       "items": { "type": "string" },
       "description": "Approved internal container registries. Images from these registries are treated as safe. Typically only used in central config."
-    },
-    "kustomize_overlays": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "Kustomize overlay dirs (relative to repo root) to validate. When set, the params-env-wiring rule only builds these dirs. Typically only used in per-repo config."
     },
     "known_mirrors": {
       "type": "object",
@@ -75,29 +70,6 @@
         "additionalProperties": false
       }
     },
-    "params_env_ignore": {
-      "type": "array",
-      "description": "params.env keys to exclude from validation. Typically only used in per-repo config.",
-      "items": {
-        "type": "object",
-        "required": ["key", "reason"],
-        "properties": {
-          "key": {
-            "type": "string",
-            "description": "The params.env key name to ignore."
-          },
-          "reason": {
-            "type": "string",
-            "description": "Why this key is excluded."
-          },
-          "reference": {
-            "type": "string",
-            "description": "Tracking URL for the exclusion."
-          }
-        },
-        "additionalProperties": false
-      }
-    }
   },
   "additionalProperties": false
 }

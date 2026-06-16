@@ -61,7 +61,7 @@ def file_exists_in_repo(repo, file_path: str) -> bool:
 
     Args:
         repo: GitHub repository object
-        file_path: Path to the file to check (e.g., '.disconnected-readiness/config.yaml')
+        file_path: Path to the file to check (e.g., 'README.md')
 
     Returns:
         bool: True if file exists, False otherwise

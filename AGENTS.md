@@ -67,7 +67,7 @@ All rules output JSON to stdout with `rule`, `passed`, and `findings` fields.
 **Rules:**
 
 - `image_manifest_complete.py` — Auto-detects whether the target repo uses `RELATED_IMAGE_*` env vars (opendatahub-operator pattern) or static CSV `relatedImages`, then checks image completeness against the detected pattern. Accepts optional `manifest_env_vars` parameter — when provided by the orchestrator, cross-references the target repo's env vars against the authoritative operator manifest (blocker for invalid or stale vars). Filters scanned files to git-tracked only.
-- `params_env.py` — Validates repos using the `params.env` + kustomize pattern. Requires kustomize binary. Validates the full wiring chain: params.env → kustomize configMap → rendered manifest → Go os.Getenv. Detects hardcoded images not sourced from params.env (blocker), unwired params.env keys (blocker), and orphan Go os.Getenv calls (blocker). Supports `params_env_ignore` in per-repo config for excluding keys. Accepts optional `manifest_env_vars` for operator manifest cross-referencing.
+- `params_env.py` — Validates repos using the `params.env` + kustomize pattern. Requires kustomize binary. Validates the full wiring chain: params.env → kustomize configMap → rendered manifest → Go os.Getenv. Detects hardcoded images not sourced from params.env (blocker), unwired params.env keys (blocker), and orphan Go os.Getenv calls (blocker). Accepts optional `manifest_env_vars` for operator manifest cross-referencing.
 - `params_env_utils.py` — Utility functions for params.env + kustomize validation, adapted from `verify-params-env-images.py`. Handles params.env parsing, overlay discovery, kustomize build, probe-based hardcoded image detection, configMapKeyRef wiring, and Go env var cross-referencing. Used by `params_env.py`.
 - `operator_manifest.py` — Parses the opendatahub-operator source to build the authoritative image manifest via `build_manifest()`. Returns a dict (not RuleResult); the orchestrator adapts it via `adapt_manifest_result()`. When no `--operator-path` is provided, `main.py` uses `tempfile.TemporaryDirectory(prefix="odh-operator-")` and clones the operator repo there. Also extracts overlay paths from operator Go source (`parse_component_overlay_paths()`) to determine which kustomize overlays are actually deployed per platform — used by `params_env` to filter out non-production overlays.
 - `no_image_tags.py` — Enforces `@sha256:` digest refs; rejects mutable tags. Detects three patterns: qualified images (`registry/org/name:tag`), `oci://` URIs without digest pin, and unqualified k8s images (`image: name:tag` in YAML `image:` fields). Source code and manifest files produce blocker severity. Skips directories managed by params.env + kustomize. Filters to git-tracked files only. HTTP/HTTPS URLs are excluded from image detection. Skips `package.json` files to avoid false positives from npm package references.
@@ -82,12 +82,7 @@ All rules output JSON to stdout with `rule`, `passed`, and `findings` fields.
 
 **Central config (`config/config.yaml`):** Single unified YAML with `registries`, `known_mirrors` (bundled packages + PyPI mirrors), and `exceptions` (central exception rules). Loaded by the orchestrator via `--exceptions` or defaults to `config/config.yaml`. JSON schema at `schemas/config.schema.json`.
 
-**Per-repo config (`.disconnected-readiness/config.yaml`):** Single unified YAML in the target repo. All sections optional. Loaded by `load_repo_config()` in `rules/common.py`. JSON schema at `schemas/config.schema.json`. Supported sections:
-
-- `kustomize_overlays` — Kustomize overlay dirs to validate.
-- `known_mirrors` — Per-repo additions to known-safe packages (`bundled_packages`) and mirrors (`pypi_mirrors`).
-- `exceptions` — Per-repo exception rules (same format as central, but `repo` field forbidden, at least one scope filter required).
-- `params_env_ignore` — params.env keys to exclude from validation (each entry needs `key` and `reason`).
+**Configuration:** All configuration is managed centrally through `config/config.yaml`. No per-repository configuration files are supported. All exceptions and settings are managed through the central configuration file.
 
 **Report rendering:** `templates/report.md` uses Jinja2-style `{{ }}` placeholders. The orchestrator tries `import jinja2` first; falls back to a built-in micro-renderer that handles `{{ var }}`, `{{ var | upper }}`, and `{% for %}` blocks.
 
