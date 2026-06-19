@@ -193,3 +193,18 @@ class TestRun:
         f.write_text("git+https://github.com/org/pkg@main\n")
         result = run(str(tmp_path))
         assert result.passed is False
+
+    def test_crash_returns_blocker(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            "rules.python_imports.get_tracked_files",
+            lambda _: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
+        result = run(str(tmp_path))
+        assert result.passed is False
+        assert any("Rule crashed" in f.message for f in result.findings)
+
+    def test_files_checked_populated(self, tmp_path):
+        f = tmp_path / "requirements.txt"
+        f.write_text("numpy\npandas\n")
+        result = run(str(tmp_path))
+        assert "requirements.txt" in result.files_checked

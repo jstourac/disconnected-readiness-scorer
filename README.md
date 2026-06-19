@@ -75,116 +75,20 @@ Reports are also generated as markdown (default) or JSON (`--report json`). Writ
 
 ## Rules
 
-### image-manifest-complete (alias: `csv`)
+For detailed technical documentation of each rule — detection logic, regex patterns, severity heuristics, cross-rule data flow, and the orchestrator execution sequence — see [docs/rules-reference.md](docs/rules-reference.md).
 
-Checks that every container image referenced in code is accounted for in the disconnected manifest. Auto-detects whether the repo uses `RELATED_IMAGE_*` env vars (opendatahub-operator pattern) or static CSV `relatedImages`.
+| Alias        | Rule                      | What it checks                                                                         |
+| ------------ | ------------------------- | -------------------------------------------------------------------------------------- |
+| `csv`        | `image-manifest-complete` | Every container image ref is accounted for in the disconnected manifest                 |
+| `tags`       | `no-image-tags`           | All image refs use `@sha256:` digests, not mutable tags                                |
+| `egress`     | `no-runtime-egress`       | No hardcoded outbound HTTP calls in runtime code (Go, Python, TS, shell)               |
+| `python`     | `python-imports-bundled`  | Python deps are available from bundled/internal mirrors; no runtime `pip install`       |
+| `params_env` | `params-env-wiring`       | Full `params.env` → kustomize → rendered manifest → Go `os.Getenv` wiring is valid     |
+| `manifest`   | `operator-manifest`       | Builds the authoritative RELATED_IMAGE manifest from the opendatahub-operator source   |
 
-**Files scanned:** `.go`, `.py`, `.yaml`, `.yml`, `.json`, `.sh` (git-tracked only). Comments (`//`, `#`) are skipped. Directories managed by `params.env` + kustomize are skipped (covered by `params-env-wiring`).
+**Production scope** (not a rule): Uses arch-analyzer to identify production code directories. Files outside production scope have findings downgraded from blocker to info. Disabled with `--no-production-scope`.
 
-**Severity logic:**
-
-| Condition | Severity |
-|-----------|----------|
-| Image ref uses a `RELATED_IMAGE` var not in operator manifest | blocker |
-| Hardcoded image with no `RELATED_IMAGE_*` wiring | blocker |
-| Image near a related env var (same file/sibling) | info |
-| Manifest vars not referenced in repo | info |
-
-When the env var pattern is detected, the orchestrator clones the opendatahub-operator and cross-references against the authoritative manifest.
-
-### params-env-wiring (alias: `params_env`)
-
-Validates repos using the `params.env` + kustomize pattern. Checks the full wiring chain: `params.env` &rarr; kustomize configMap &rarr; rendered manifest &rarr; Go `os.Getenv`. Requires `kustomize` binary on PATH.
-
-When `manifest_source` is available (from operator manifest mapping), uses the operator's kustomize folders as the source of truth: copies the entire manifest source folder to a temp dir, replaces all `params.env` image values with probe sentinels, then builds every `kustomization.yaml` in the copy. Any non-sentinel image in the rendered output is hardcoded and not wired through `params.env`. Falls back to `discover_overlays()` (scanning the repo for co-located `params.env` + `kustomization.yaml` dirs) when no manifest source mapping is available.
-
-**Files scanned:** `params.env`, kustomize overlays, `.go` files (git-tracked only)
-
-**Severity logic:**
-
-| Condition | Severity |
-|-----------|----------|
-| Hardcoded image not sourced from params.env | blocker |
-| Orphan Go `os.Getenv` call with no matching rendered manifest var | blocker |
-| `RELATED_IMAGE_*` var mapped from params.env not in operator manifest | blocker |
-| Unwired params.env key (defined but not consumed by kustomize) | info |
-
-When the orchestrator provides operator manifest vars, cross-references mapped `RELATED_IMAGE_*` vars against the manifest.
-
-### no-image-tags (alias: `tags`)
-
-Enforces `@sha256:` digest refs; rejects mutable tags (`:latest`, `:v1.2.3`). Tags cannot be reliably mirrored in disconnected environments.
-
-**Files scanned:** `.go`, `.py`, `.yaml`, `.yml`, `.json`, `.toml`, `Dockerfile`, `Containerfile` (git-tracked only). Directories managed by `params.env` + kustomize are skipped entirely. `package.json` files are skipped to avoid false positives from npm package references.
-
-**Detects three image reference patterns:**
-
-- **Qualified images** (`registry.io/org/name:tag`) — standard container image references with mutable tags
-- **OCI URIs** (`oci://registry.io/org/name`) — flags `oci://` URIs without `@sha256:` digest pin, including those with no tag at all
-- **Unqualified k8s images** (`image: nginx:latest`) — detects images without registry prefix in YAML `image:` fields (e.g. `origin-cli:latest` in a k8s Job manifest)
-
-**Severity logic:**
-
-| Condition | Severity |
-|-----------|----------|
-| Tagged image in any scanned file | blocker |
-| `oci://` URI without `@sha256:` digest | blocker |
-| Unqualified image in YAML `image:` field | blocker |
-| Image uses `@sha256:` digest | pass (not reported) |
-
-HTTP/HTTPS URLs are excluded from image detection. `params.env` files produce info-level findings.
-
-### no-runtime-egress (alias: `egress`)
-
-Detects outbound HTTP calls in runtime code that would fail in disconnected environments.
-
-**Files scanned:** `.go`, `.py`, `.ts`, `.tsx`, `.sh` (git-tracked only). Comments (`//`, `#`) are skipped.
-
-**Patterns detected:** `http.Get/Post/Do`, `requests.get`, `fetch()`, `axios`, `curl`, `wget`, `net.Dial`, `hf download`, `huggingface-cli download`, and more.
-
-**Severity logic:**
-
-| Condition | Severity |
-|-----------|----------|
-| Hardcoded external URL (`https://api.example.com`) | blocker |
-| HuggingFace model download (`hf download`, `huggingface-cli download`) | blocker |
-| Cluster-internal URL (`kubernetes.default.svc`, `*.svc.cluster.local`, `localhost`) | info |
-| Configurable URL (via env var, config, `viper`, etc.) | info |
-| Network call with no hardcoded URL (relative/variable) | info |
-
-### python-imports (alias: `python`)
-
-Validates Python dependencies against the known-bundled list. Packages not pre-installed in the disconnected environment will fail to install at runtime.
-
-**Files scanned:** `requirements*.txt`, `setup.py`, `pyproject.toml`, `.py` files (for `pip install` calls) — git-tracked only
-
-**Severity logic:**
-
-| Condition | Severity |
-|-----------|----------|
-| Unbundled package in production requirements | blocker |
-| Runtime `pip install` / `subprocess.run(["pip", ...])` call | blocker |
-| Package from known PyPI mirror | pass |
-
-### operator-manifest (alias: `manifest`)
-
-Parses the opendatahub-operator source to build the authoritative image manifest (100+ `RELATED_IMAGE_*` env vars across 18 components). Not run by default — included when `csv` or `params_env` detect a pattern needing cross-referencing, or when explicitly selected with `--rules manifest`.
-
-#### Overlay path detection via arch-analyzer
-
-[arch-analyzer](https://github.com/ugiordan/architecture-analyzer) is **required** (`make install-arch-analyzer`). The scorer runs it on the operator repo to extract `kustomize_components` data from `component-architecture.json`. This provides **overlay paths** per component — which kustomize overlays the operator actually deploys (e.g. `overlays/odh`, `overlays/rhoai`). Combined with the manifest source folder (from `get_all_manifests.sh`), this allows `params-env-wiring` to scan only operator-deployed overlays, filtering out upstream overlays (e.g. `config/runtimes`, `overlays/kubeflow`) that produce false positives.
-
-The arch-analyzer also runs on the target component repo. The resulting `component-architecture.json` is passed to rules as `arch_data` for production scope detection and overlay classification.
-
-Override overlay detection with `kustomize_overlays` in per-repo config.
-
-### production-scope
-
-Not a rule itself, but a cross-cutting optimization. Uses arch-analyzer's `dockerfiles[].copy_instructions.original_sources` to identify production code directories. Any file under a production directory is in scope; files outside are downgraded from blocker/warning to info.
-
-Files outside production scope are downgraded from blocker to info. Applies to ALL file types (Go, Python, YAML, shell, etc) via `production_dirs` directory checks. `.yaml/.yml` files also checked against `manifest_files` set for kustomize/helm graph scoping. Disabled with `--no-production-scope`.
-
-When operator manifest source folder mapping is available, also scopes YAML files to the operator-referenced kustomize/helm graph. When overlay paths are auto-detected (or configured via `kustomize_overlays`), passes them to `params-env-wiring` to restrict overlay scanning. Uses arch-analyzer's `kustomize_overlay_refs` to classify production vs non-production overlays.
+[arch-analyzer](https://github.com/ugiordan/architecture-analyzer) is **required** (`make install-arch-analyzer`). It runs on both the operator and target component repos to extract Dockerfile COPY sources, kustomize overlay paths, and production scope data.
 
 ## Scoring
 
@@ -206,14 +110,14 @@ All policy-based exclusions (test dirs, CI dirs, build files, etc.) are configur
 
 ### Exception fields
 
-| Field     | Required | Description                                                   |
-|-----------|----------|---------------------------------------------------------------|
-| `rule`    | yes      | Rule name, comma-separated list, or `*` for all rules         |
-| `reason`  | yes      | Why this exception exists                                     |
-| `paths`   | no       | List of glob patterns — matches if ANY pattern matches        |
-| `image`   | no       | Glob pattern matched against finding image ref                |
-| `message` | no       | Glob pattern matched against finding message                  |
-| `repo`    | no       | Repo name or `org/repo` — scopes exception to one component   |
+| Field     | Required | Description                                                              |
+|-----------|----------|--------------------------------------------------------------------------|
+| `rule`    | yes      | Rule name, comma-separated list, or `*` for all rules                    |
+| `reason`  | yes      | Why this exception exists                                                |
+| `paths`   | no       | List of glob patterns — matches if ANY pattern matches                   |
+| `images`  | no       | List of glob patterns matched against finding image ref (any match wins) |
+| `message` | no       | Glob pattern matched against finding message                             |
+| `repo`    | no       | Repo name or `org/repo` — scopes exception to one component              |
 
 Path patterns support `**/` prefix to match at any depth (e.g. `**/Dockerfile` matches both `Dockerfile` and `build/Dockerfile`). Patterns ending with `/**` also match the directory itself (e.g. `**/config/scorecard/**` matches both `config/scorecard` and `config/scorecard/foo.yaml`).
 
@@ -288,12 +192,12 @@ Exceptions are managed centrally in the scorer repository's `config/config.yaml`
 |-------------|----------|-----------------------------------------------------------------------------|
 | `rule`      | yes      | Rule name (e.g. `no-runtime-egress`)                                        |
 | `paths`     | *        | List of glob patterns matched against finding file path                     |
-| `image`     | *        | Glob pattern matched against finding image ref                              |
+| `images`    | *        | List of glob patterns matched against finding image ref (any match wins)    |
 | `message`   | *        | Glob pattern matched against finding message (use `*text*` for substring)   |
 | `reason`    | yes      | Why this is not a real disconnected issue                                   |
 | `reference` | no       | Tracking URL (GitHub Issue or Jira ticket) if this is a scanner bug         |
 
-\* At least one of `paths`, `image`, or `message` is required.
+\* At least one of `paths`, `images`, or `message` is required.
 
 ```yaml
 exceptions:
@@ -318,9 +222,9 @@ If you think a finding is caused by a bug in the scanner (not just a repo-specif
 
 ### Common Errors
 
-**"at least one scope filter"** — Include `paths`, `image`, or `message` to limit the exception. Disabling an entire rule is not allowed.
+**"at least one scope filter"** — Include `paths`, `images`, or `message` to limit the exception. Disabling an entire rule is not allowed.
 
-**"unknown field(s)"** — Check for typos in field names. Valid fields: `rule`, `repo`, `paths`, `image`, `message`, `reason`, `reference`.
+**"unknown field(s)"** — Check for typos in field names. Valid fields: `rule`, `repo`, `paths`, `images`, `message`, `reason`, `reference`.
 
 ## PR Integration
 

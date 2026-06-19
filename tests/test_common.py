@@ -1,8 +1,19 @@
 """Tests for rules.common dataclasses."""
 
+from pathlib import Path
+
 import pytest
 
-from rules.common import Finding, RuleResult, Severity
+from rules.common import (
+    ConfigError,
+    Finding,
+    ProductionScope,
+    RuleResult,
+    Severity,
+    build_overlay_file_map,
+    is_non_production_overlay_file,
+    load_config_file,
+)
 
 
 class TestSeverity:
@@ -76,3 +87,123 @@ class TestRuleResult:
         r = RuleResult(rule="x", passed=False, findings=findings)
         assert len(r.findings) == 1
         assert r.findings[0].severity == "blocker"
+
+
+class TestBuildOverlayFileMap:
+    def test_valid_data(self, tmp_path):
+        arch_data = {
+            "kustomize_overlay_refs": [
+                {"overlay_path": "overlays/odh", "file_path": "config/base/deploy.yaml"},
+                {"overlay_path": "overlays/odh", "file_path": "config/base/svc.yaml"},
+                {"overlay_path": "overlays/dev", "file_path": "config/dev/patch.yaml"},
+            ]
+        }
+        result = build_overlay_file_map(arch_data, tmp_path)
+        assert len(result) == 2
+        assert len(result["overlays/odh"]) == 2
+        assert (tmp_path / "config/base/deploy.yaml").resolve() in result["overlays/odh"]
+        assert len(result["overlays/dev"]) == 1
+
+    def test_none_returns_empty(self):
+        assert build_overlay_file_map(None, Path(".")) == {}
+
+    def test_empty_dict_returns_empty(self):
+        assert build_overlay_file_map({}, Path(".")) == {}
+
+    def test_missing_keys_skipped(self):
+        arch_data = {
+            "kustomize_overlay_refs": [
+                {"overlay_path": "overlays/odh"},
+                {"file_path": "config/base/deploy.yaml"},
+                {},
+            ]
+        }
+        assert build_overlay_file_map(arch_data, Path(".")) == {}
+
+    def test_empty_refs_list(self):
+        assert build_overlay_file_map({"kustomize_overlay_refs": []}, Path(".")) == {}
+
+
+class TestIsNonProductionOverlayFile:
+    def test_file_in_non_production_overlay(self, tmp_path):
+        f = tmp_path / "config" / "dev" / "patch.yaml"
+        f.parent.mkdir(parents=True)
+        f.touch()
+        overlay_map = {"overlays/dev": {f.resolve()}}
+        scope = ProductionScope(method="test", overlay_paths=["overlays/prod"])
+        assert is_non_production_overlay_file(f, scope, overlay_map) is True
+
+    def test_file_in_production_overlay(self, tmp_path):
+        f = tmp_path / "config" / "prod" / "deploy.yaml"
+        f.parent.mkdir(parents=True)
+        f.touch()
+        overlay_map = {"overlays/prod": {f.resolve()}}
+        scope = ProductionScope(method="test", overlay_paths=["overlays/prod"])
+        assert is_non_production_overlay_file(f, scope, overlay_map) is False
+
+    def test_file_not_in_any_overlay(self, tmp_path):
+        f = tmp_path / "src" / "main.go"
+        f.parent.mkdir(parents=True)
+        f.touch()
+        overlay_map = {"overlays/dev": {(tmp_path / "other.yaml").resolve()}}
+        scope = ProductionScope(method="test", overlay_paths=["overlays/prod"])
+        assert is_non_production_overlay_file(f, scope, overlay_map) is False
+
+    def test_empty_overlay_map(self, tmp_path):
+        f = tmp_path / "f.yaml"
+        f.touch()
+        scope = ProductionScope(method="test", overlay_paths=["overlays/prod"])
+        assert is_non_production_overlay_file(f, scope, {}) is False
+
+    def test_none_production_scope(self, tmp_path):
+        f = tmp_path / "f.yaml"
+        f.touch()
+        assert is_non_production_overlay_file(f, None, {"o": {f.resolve()}}) is False
+
+    def test_none_overlay_paths(self, tmp_path):
+        f = tmp_path / "f.yaml"
+        f.touch()
+        scope = ProductionScope(method="test", overlay_paths=None)
+        assert is_non_production_overlay_file(f, scope, {"o": {f.resolve()}}) is False
+
+
+class TestConfigError:
+    def test_is_exception(self):
+        assert isinstance(ConfigError("msg"), Exception)
+
+    def test_message(self):
+        assert str(ConfigError("test error")) == "test error"
+
+
+class TestLoadConfigFile:
+    def test_missing_file(self, tmp_path):
+        assert load_config_file(tmp_path / "nonexistent.yaml") == {}
+
+    def test_valid_yaml(self, tmp_path):
+        f = tmp_path / "config.yaml"
+        f.write_text("key: value\nitems:\n  - one\n  - two\n")
+        result = load_config_file(f)
+        assert result == {"key": "value", "items": ["one", "two"]}
+
+    def test_empty_yaml(self, tmp_path):
+        f = tmp_path / "config.yaml"
+        f.write_text("")
+        assert load_config_file(f) == {}
+
+    def test_unreadable_raises_config_error(self, tmp_path):
+        d = tmp_path / "config.yaml"
+        d.mkdir()
+        with pytest.raises(ConfigError, match="Cannot read"):
+            load_config_file(d)
+
+    def test_malformed_yaml_raises_config_error(self, tmp_path):
+        f = tmp_path / "config.yaml"
+        f.write_text(":\n  - :\n    : [")
+        with pytest.raises(ConfigError):
+            load_config_file(f)
+
+    def test_non_dict_raises_config_error(self, tmp_path):
+        f = tmp_path / "config.yaml"
+        f.write_text("- item1\n- item2\n")
+        with pytest.raises(ConfigError, match="must be a YAML mapping"):
+            load_config_file(f)

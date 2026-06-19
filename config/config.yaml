@@ -200,3 +200,11 @@ exceptions:
     paths:
       - "**/snapshots/**"
     reason: "Test snapshots — not deployed in production"
+
+  - rule: "*"
+    repo: opendatahub-operator
+    paths:
+      - "config/**"
+    images:
+      - REPLACE_IMAGE:v0.0.0-placeholder
+    reason: "Test kustomize overlays — not deployed in production"

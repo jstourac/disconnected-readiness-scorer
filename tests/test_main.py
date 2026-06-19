@@ -3,15 +3,19 @@
 import json
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from main import (
+    ArchAnalyzerError,
     _build_exception_snippets,
     _build_false_positive_section,
     _get_repo_name,
     _render_template_simple,
+    _run_arch_analyzer,
+    _validate_config_schema,
     adapt_manifest_result,
     apply_exceptions,
     compute_score,
@@ -652,6 +656,43 @@ class TestApplyExceptions:
         apply_exceptions(results, exceptions, "repo")
         assert results[0].findings[0].severity == "blocker"
 
+    def test_images_list_matches(self):
+        results = [RuleResult(
+            rule="r", passed=False,
+            findings=[Finding("blocker", "f.yaml", 1, "repo/REPLACE_IMAGE:tag", "tagged image")],
+        )]
+        exceptions = [{"rule": "*", "images": ["*/REPLACE_IMAGE:*"], "reason": "placeholder"}]
+        apply_exceptions(results, exceptions, "repo")
+        assert results[0].findings[0].severity == "info"
+        assert results[0].passed is True
+
+    def test_images_list_no_match_stays_blocker(self):
+        results = [RuleResult(
+            rule="r", passed=False,
+            findings=[Finding("blocker", "f.yaml", 1, "quay.io/org/real:tag", "tagged image")],
+        )]
+        exceptions = [{"rule": "*", "images": ["*/REPLACE_IMAGE:*"], "reason": "placeholder"}]
+        apply_exceptions(results, exceptions, "repo")
+        assert results[0].findings[0].severity == "blocker"
+
+    def test_images_list_any_pattern_matches(self):
+        results = [RuleResult(
+            rule="r", passed=False,
+            findings=[Finding("blocker", "f.yaml", 1, "quay.io/org/app:replace", "tagged image")],
+        )]
+        exceptions = [{"rule": "*", "images": ["*/REPLACE_IMAGE:*", "*:replace"], "reason": "placeholder"}]
+        apply_exceptions(results, exceptions, "repo")
+        assert results[0].findings[0].severity == "info"
+
+    def test_images_and_paths_both_must_match(self):
+        results = [RuleResult(
+            rule="r", passed=False,
+            findings=[Finding("blocker", "prod/f.yaml", 1, "repo/REPLACE_IMAGE:tag", "tagged")],
+        )]
+        exceptions = [{"rule": "*", "images": ["*/REPLACE_IMAGE:*"], "paths": ["test/**"], "reason": "placeholder"}]
+        apply_exceptions(results, exceptions, "repo")
+        assert results[0].findings[0].severity == "blocker"
+
 
 # --- report sorting ---
 
@@ -759,6 +800,98 @@ class TestArchAnalyzerError:
         err = ArchAnalyzerError("binary missing")
         assert isinstance(err, Exception)
         assert "binary missing" in str(err)
+
+
+class TestValidateConfigSchema:
+    def test_valid_config_passes(self):
+        _validate_config_schema({"exceptions": []}, "test.yaml")
+
+    def test_invalid_config_raises(self):
+        with pytest.raises(ValueError, match="schema validation error"):
+            _validate_config_schema({"exceptions": "not_a_list"}, "test.yaml")
+
+    def test_missing_schema_file_no_error(self, monkeypatch):
+        import main
+        monkeypatch.setattr(main, "_SCHEMA_PATH", Path("/nonexistent/schema.json"))
+        _validate_config_schema({"anything": True}, "test.yaml")
+
+
+class TestRunArchAnalyzer:
+    def test_reuses_existing_json(self, tmp_path):
+        data = {"dockerfiles": []}
+        (tmp_path / "component-architecture.json").write_text(json.dumps(data))
+        result = _run_arch_analyzer("nonexistent-bin", str(tmp_path))
+        assert result == data
+
+    def test_binary_not_found_raises(self, tmp_path):
+        with pytest.raises(ArchAnalyzerError, match="not found"):
+            _run_arch_analyzer(str(tmp_path / "no-such-bin"), str(tmp_path))
+
+    def test_subprocess_failure_raises(self, tmp_path, monkeypatch):
+        import subprocess
+        bin_path = tmp_path / "fake-bin"
+        bin_path.touch()
+        monkeypatch.setattr(
+            "main.subprocess.run",
+            MagicMock(side_effect=subprocess.CalledProcessError(1, "cmd", stderr=b"fail")),
+        )
+        with pytest.raises(ArchAnalyzerError, match="failed"):
+            _run_arch_analyzer(str(bin_path), str(tmp_path))
+
+    def test_timeout_raises(self, tmp_path, monkeypatch):
+        import subprocess
+        bin_path = tmp_path / "fake-bin"
+        bin_path.touch()
+        monkeypatch.setattr(
+            "main.subprocess.run",
+            MagicMock(side_effect=subprocess.TimeoutExpired("cmd", 300)),
+        )
+        with pytest.raises(ArchAnalyzerError, match="failed"):
+            _run_arch_analyzer(str(bin_path), str(tmp_path))
+
+    def test_missing_output_after_run_raises(self, tmp_path, monkeypatch):
+        bin_path = tmp_path / "fake-bin"
+        bin_path.touch()
+        monkeypatch.setattr("main.subprocess.run", MagicMock())
+        with pytest.raises(ArchAnalyzerError, match="did not generate"):
+            _run_arch_analyzer(str(bin_path), str(tmp_path))
+
+    def test_invalid_json_raises(self, tmp_path):
+        (tmp_path / "component-architecture.json").write_text("not json{{{")
+        with pytest.raises(ArchAnalyzerError, match="Failed to parse"):
+            _run_arch_analyzer("any", str(tmp_path))
+
+
+class TestApplyExceptionsHits:
+    def test_returns_hit_counts(self):
+        results = [RuleResult(
+            rule="r", passed=False,
+            findings=[Finding("blocker", "f.go", 1, "", "msg")],
+        )]
+        exceptions = [
+            {"rule": "r", "reason": "ok"},
+            {"rule": "other", "reason": "unused"},
+        ]
+        hits = apply_exceptions(results, exceptions, "repo")
+        assert hits == [1, 0]
+
+    def test_empty_exceptions_returns_empty(self):
+        results = [RuleResult(rule="r", findings=[Finding("blocker", "f", 1, "", "m")])]
+        hits = apply_exceptions(results, [], "repo")
+        assert hits == []
+
+    def test_wildcard_rule_counts(self):
+        results = [RuleResult(
+            rule="r", passed=False,
+            findings=[
+                Finding("blocker", "a.go", 1, "", "m1"),
+                Finding("blocker", "b.go", 2, "", "m2"),
+                Finding("blocker", "c.go", 3, "", "m3"),
+            ],
+        )]
+        exceptions = [{"rule": "*", "reason": "all ok"}]
+        hits = apply_exceptions(results, exceptions, "repo")
+        assert hits == [3]
 
 
 # --- exception snippets and false positive section ---

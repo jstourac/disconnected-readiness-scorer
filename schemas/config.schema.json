@@ -24,9 +24,10 @@
             "items": { "type": "string" },
             "description": "List of glob patterns — matches if ANY pattern matches."
           },
-          "image": {
-            "type": "string",
-            "description": "Glob pattern matched against finding image ref."
+          "images": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "List of glob patterns matched against finding image ref. Matches if ANY pattern matches."
           },
           "message": {
             "type": "string",

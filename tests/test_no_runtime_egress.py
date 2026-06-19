@@ -258,3 +258,60 @@ class TestRun:
         assert len(result.findings) == 1
         assert result.findings[0].severity == "blocker"
         assert "HuggingFace" in result.findings[0].message
+
+    def test_exec_command_git_in_go(self, tmp_path):
+        f = tmp_path / "clone.go"
+        f.write_text('package main\nfunc f() { exec.Command("git", "clone", repo) }')
+        result = run(str(tmp_path))
+        assert len(result.findings) == 1
+        assert "git" in result.findings[0].message
+
+    def test_from_pretrained_in_python(self, tmp_path):
+        f = tmp_path / "model.py"
+        f.write_text('model = AutoModel.from_pretrained("bert-base")')
+        result = run(str(tmp_path))
+        assert len(result.findings) == 1
+        assert "from_pretrained" in result.findings[0].message
+
+    def test_snapshot_download_in_python(self, tmp_path):
+        f = tmp_path / "dl.py"
+        f.write_text('snapshot_download("model-name")')
+        result = run(str(tmp_path))
+        assert len(result.findings) == 1
+        assert "snapshot_download" in result.findings[0].message
+
+    def test_load_dataset_in_python(self, tmp_path):
+        f = tmp_path / "data.py"
+        f.write_text('ds = load_dataset("squad")')
+        result = run(str(tmp_path))
+        assert len(result.findings) == 1
+        assert "load_dataset" in result.findings[0].message
+
+    def test_sentence_transformer_in_python(self, tmp_path):
+        f = tmp_path / "embed.py"
+        f.write_text('model = SentenceTransformer("all-MiniLM-L6-v2")')
+        result = run(str(tmp_path))
+        assert len(result.findings) == 1
+        assert "SentenceTransformer" in result.findings[0].message
+
+    def test_torch_hub_load_in_python(self, tmp_path):
+        f = tmp_path / "vision.py"
+        f.write_text('model = torch.hub.load("pytorch/vision", "resnet50")')
+        result = run(str(tmp_path))
+        assert len(result.findings) == 1
+        assert "torch.hub.load" in result.findings[0].message
+
+    def test_files_checked_populated(self, tmp_path):
+        f = tmp_path / "main.go"
+        f.write_text('package main\nfunc f() { http.Get("http://example.com") }')
+        result = run(str(tmp_path))
+        assert len(result.files_checked) > 0
+
+    def test_crash_returns_blocker(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            "rules.no_runtime_egress.get_tracked_files",
+            lambda _: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
+        result = run(str(tmp_path))
+        assert result.passed is False
+        assert any("Rule crashed" in f.message for f in result.findings)

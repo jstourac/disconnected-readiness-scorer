@@ -188,9 +188,9 @@ def apply_exceptions(results, exceptions, repo_name):
                 if exc_paths:
                     if not any(_path_matches(finding.file, p) for p in exc_paths):
                         continue
-                exc_image = exc.get("image")
-                if exc_image:
-                    if not fnmatch(finding.image, exc_image):
+                exc_images = exc.get("images") or []
+                if exc_images:
+                    if not any(fnmatch(finding.image, pat) for pat in exc_images):
                         continue
                 exc_message = exc.get("message")
                 if exc_message:

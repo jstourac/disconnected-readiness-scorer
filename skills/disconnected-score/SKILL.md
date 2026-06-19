@@ -128,6 +128,12 @@ exceptions:
     paths:
       - "frontend/src/utilities/fetch.ts"
     reason: "Uses cluster-internal API proxy, not external egress"
+
+  - rule: "*"
+    images:
+      - "*/REPLACE_IMAGE:*"
+      - "*:replace"
+    reason: "Kustomize/template placeholder images"
 ```
 
 ### Per-repo config (`.disconnected-readiness/config.yaml`)
