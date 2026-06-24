@@ -128,6 +128,29 @@ class TestArchAnalyzerResult:
         assert result.kustomize_overlay_refs == []
         assert result.kustomize_components == []
 
+    def test_from_dict_sources_fallback(self):
+        data = {"dockerfiles": [{
+            "path": "Dockerfile",
+            "copy_instructions": [
+                {"sources": ["maas-api/deploy"], "destination": "/maas-api/deploy"},
+            ],
+        }]}
+        result = ArchAnalyzerResult.from_dict(data)
+        ci = result.dockerfiles[0].copy_instructions[0]
+        assert ci.original_sources == ["maas-api/deploy"]
+
+    def test_from_dict_original_sources_takes_precedence(self):
+        data = {"dockerfiles": [{
+            "path": "Dockerfile",
+            "copy_instructions": [{
+                "sources": ["/app/binary"],
+                "original_sources": ["cmd/", "pkg/"],
+            }],
+        }]}
+        result = ArchAnalyzerResult.from_dict(data)
+        ci = result.dockerfiles[0].copy_instructions[0]
+        assert ci.original_sources == ["cmd/", "pkg/"]
+
     def test_from_dict_missing_fields_use_defaults(self):
         data = {"dockerfiles": [{"path": "Dockerfile"}]}
         result = ArchAnalyzerResult.from_dict(data)

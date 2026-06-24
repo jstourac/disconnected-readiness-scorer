@@ -57,7 +57,10 @@ class ArchAnalyzerResult:
                 path=df.get("path", ""),
                 copy_instructions=[
                     CopyInstruction(
-                        original_sources=ci.get("original_sources", []),
+                        original_sources=(
+                            ci.get("original_sources")
+                            or ci.get("sources", [])
+                        ),
                         manifest_hint=ci.get("manifest_hint", False),
                     )
                     for ci in df.get("copy_instructions", [])

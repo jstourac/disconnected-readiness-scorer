@@ -26,7 +26,7 @@ from types import SimpleNamespace
 
 GITHUB_URL = "https://github.com"
 
-ARCH_ANALYZER_BIN = str(Path(__file__).parent / "bin" / "arch-analyzer")
+ARCH_ANALYZER_BIN = str((Path(__file__).parent / "bin" / "arch-analyzer").resolve())
 
 
 def load_repos(config_path):

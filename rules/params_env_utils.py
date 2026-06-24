@@ -275,7 +275,7 @@ def extract_all_images(rendered: str, exclude_patterns: List[str]) -> Dict[str, 
         cm_data_key: Optional[str] = None
         in_data_section = False
         lines = doc.splitlines()
-        for i, line in enumerate(lines):
+        for line in lines:
             if line == "data:":
                 in_data_section = True
                 cm_data_key = None

@@ -353,6 +353,24 @@ def _extract_production_sources_from_arch_data(
                             production_dirs.add(ctx_dir.resolve())
                         continue
 
+                    # Dockerfile in subdirectory — try heuristics from its dir first
+                    resolved_df_dir = dockerfile_dir.resolve()
+                    if resolved_df_dir != resolved_root:
+                        df_go_mod = resolved_df_dir / "go.mod"
+                        if df_go_mod.exists():
+                            go_dirs = _go_list_production_dirs(resolved_df_dir)
+                            if go_dirs:
+                                production_dirs.update(
+                                    d for d in go_dirs if _inside_repo(d)
+                                )
+                                continue
+                        pkg_dir = _nearest_package_json_dir(
+                            dockerfile_dir, repo_root,
+                        )
+                        if pkg_dir != resolved_root and _inside_repo(pkg_dir):
+                            production_dirs.add(pkg_dir)
+                            continue
+
                     go_module_dir = _find_go_module_dir(all_sources, repo_root)
                     if go_module_dir:
                         go_dirs = _go_list_production_dirs(go_module_dir)

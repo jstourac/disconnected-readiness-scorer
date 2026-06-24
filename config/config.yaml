@@ -43,6 +43,7 @@ exceptions:
       - "**/hack/**"
       - "**/fixture/**"
       - "**/testutil/**"
+      - "**/loadtest/**"
     reason: "Test/dev directory — not deployed in production"
 
   # Test file patterns

@@ -651,6 +651,55 @@ class TestExtractProductionSources:
         resolved_dirs = {d.resolve() for d in dirs}
         assert (pkg / "main.go").resolve() in resolved_files or pkg.resolve() in resolved_dirs
 
+    def test_direct_copy_uses_sources_fallback(self, tmp_path):
+        """Direct COPY (no from_stage) uses sources as original_sources."""
+        controller = tmp_path / "maas-controller"
+        controller.mkdir()
+        deploy = tmp_path / "maas-api" / "deploy"
+        deploy.mkdir(parents=True)
+        base_api = tmp_path / "deployment" / "base" / "maas-api"
+        base_api.mkdir(parents=True)
+
+        arch_data = ArchAnalyzerResult.from_dict({"dockerfiles": [{
+            "path": "maas-controller/Dockerfile",
+            "copy_instructions": [
+                {
+                    "original_sources": ["maas-controller/"],
+                },
+                {"sources": ["maas-api/deploy"], "destination": "/maas-api/deploy"},
+                {"sources": ["deployment/base/maas-api"], "destination": "/deployment/base/maas-api"},
+            ],
+        }]})
+        dirs, _, _, _ = _extract_production_sources_from_arch_data(arch_data, tmp_path)
+        assert controller.resolve() in dirs
+        assert deploy.resolve() in dirs
+        assert base_api.resolve() in dirs
+
+    def test_root_source_scoped_via_dockerfile_dir_package_json(self, tmp_path):
+        """COPY . . in subdir Dockerfile — JS heuristic from Dockerfile dir."""
+        subdir = tmp_path / "frontend"
+        subdir.mkdir()
+        (subdir / "Dockerfile").write_text("FROM node\nCOPY . .\n")
+        (subdir / "package.json").write_text('{"name": "app"}')
+        arch_data = ArchAnalyzerResult.from_dict({"dockerfiles": [{
+            "path": "frontend/Dockerfile",
+            "copy_instructions": [{"original_sources": ["."]}],
+        }]})
+        dirs, _, _, _ = _extract_production_sources_from_arch_data(arch_data, tmp_path)
+        assert subdir.resolve() in dirs
+
+    def test_root_source_subdir_dockerfile_no_heuristic_match(self, tmp_path):
+        """COPY . . in subdir Dockerfile, no go.mod/package.json — falls back to Dockerfile dir."""
+        subdir = tmp_path / "service"
+        subdir.mkdir()
+        (subdir / "Dockerfile").write_text("FROM ubuntu\nCOPY . .\n")
+        arch_data = ArchAnalyzerResult.from_dict({"dockerfiles": [{
+            "path": "service/Dockerfile",
+            "copy_instructions": [{"original_sources": ["."]}],
+        }]})
+        dirs, _, _, _ = _extract_production_sources_from_arch_data(arch_data, tmp_path)
+        assert subdir.resolve() in dirs
+
     def test_no_copy_instructions(self, tmp_path):
         arch_data = ArchAnalyzerResult.from_dict({"dockerfiles": [{
             "path": "Dockerfile",
