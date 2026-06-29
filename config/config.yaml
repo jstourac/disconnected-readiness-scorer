@@ -194,6 +194,8 @@ exceptions:
     reason: "utils.py generates a training pod script (user controls pip index URL); training_client.py is an error message string — neither is a runtime download"
   - rule: "no-image-tags"
     repo: training-operator
+    paths:
+      - "pkg/config/config.go"
     images:
       - "ghcr.io/kubeflow/training-v1/kubectl-delivery:*"
     reason: "MPI kubectl-delivery image default — MPI is not supported downstream"
