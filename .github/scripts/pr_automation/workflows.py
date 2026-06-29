@@ -7,6 +7,8 @@ and workflow management.
 """
 
 import io
+import os
+import re
 from dataclasses import dataclass
 
 from github import GithubException, UnknownObjectException
@@ -106,6 +108,81 @@ class TemplateRenderer:
 class SimpleWorkflowManager:
     """Simple workflow management with addition-only principle."""
 
+    def _should_propagate_update(self, current_uses: str, template_uses: str) -> tuple[bool, str]:
+        """
+        Central Authority Logic: Decide if update should propagate based on current usage pattern.
+
+        Strategy:
+        1. Floating tag users (@v1) only get updates for major version changes (@v1 → @v2)
+        2. Pinned users (@v1.2.3) only get updates for major version changes
+        3. Minor/patch releases are handled automatically via floating tags
+        """
+        trigger_reason = os.getenv("TRIGGER_REASON", "unknown")
+
+        # Extract reference patterns
+        current_ref_match = re.search(r"@(v[0-9]+(?:\.[0-9]+\.[0-9]+)?)", current_uses)
+        template_ref_match = re.search(r"@(v[0-9]+(?:\.[0-9]+\.[0-9]+)?)", template_uses)
+
+        if not current_ref_match or not template_ref_match:
+            return False, "Could not parse version references"
+
+        current_ref = current_ref_match.group(1)  # e.g., "v1" or "v1.2.3"
+        template_ref = template_ref_match.group(1)  # e.g., "v2" or "v2.0.0"
+
+        # Determine reference types
+        is_current_floating = re.match(r"^v[0-9]+$", current_ref)  # v1, v2, etc.
+        is_current_pinned = re.match(r"^v[0-9]+\.[0-9]+\.[0-9]+$", current_ref)  # v1.2.3
+
+        # Parse major versions
+        current_major = int(current_ref.split(".")[0][1:])  # Extract major number from v1.2.3 or v1
+        template_major = int(
+            template_ref.split(".")[0][1:]
+        )  # Extract major number from v2.0.0 or v2
+
+        is_major_version_change = current_major != template_major
+
+        # Decision logic based on trigger and reference patterns
+        if trigger_reason == "major_version_release":
+            if is_major_version_change:
+                if is_current_floating:
+                    return (
+                        True,
+                        f"Major version update for floating tag user: {current_ref} → {template_ref}",
+                    )
+                if is_current_pinned:
+                    return (
+                        True,
+                        f"Major version upgrade offered for pinned user: {current_ref} → {template_ref}",
+                    )
+                return False, f"Unknown reference pattern: {current_ref}"
+            return False, f"Major release but same major version ({current_major})"
+
+        if trigger_reason == "minor_patch_release":
+            return (
+                False,
+                f"Minor/patch release - teams using {current_ref} get updates automatically",
+            )
+
+        if trigger_reason == "template_change":
+            # Template file changed - always propagate
+            return True, "Template file updated - propagating to all repositories"
+
+        if trigger_reason == "manual":
+            # Manual execution - always propagate for review
+            return True, f"Manual execution - updating {current_ref} → {template_ref}"
+
+        if trigger_reason == "scheduled":
+            # Scheduled execution - only major changes
+            if is_major_version_change:
+                return True, f"Scheduled: Major version update {current_ref} → {template_ref}"
+            return False, "Scheduled: No major version change needed"
+
+        # Default: allow update but note the reason
+        return (
+            True,
+            f"Unknown trigger ({trigger_reason}) - allowing update {current_ref} → {template_ref}",
+        )
+
     def update_workflow_safe(
         self, existing_content: str, template_content: str
     ) -> tuple[str, UpdateResult]:
@@ -129,10 +206,21 @@ class SimpleWorkflowManager:
             current_uses = existing["jobs"]["check"].get("uses", "")
             template_uses = template["jobs"]["check"]["uses"]
 
+            # Central Authority Logic: Determine if propagation should happen
+            should_propagate, propagation_reason = self._should_propagate_update(
+                current_uses, template_uses
+            )
+
+            if not should_propagate:
+                print(f"    Skipping propagation: {propagation_reason}")
+                return existing_content, result
+
             if current_uses != template_uses:
                 existing["jobs"]["check"]["uses"] = template_uses
                 result.structure_updated = True
                 result.needs_update = True
+                print(f"    Propagating update: {current_uses} → {template_uses}")
+                print(f"    Reason: {propagation_reason}")
 
             # 'with' section: ADD missing parameters, REMOVE deprecated ones, preserve team customizations
             existing_with = existing["jobs"]["check"].get("with", {})
@@ -170,7 +258,14 @@ class SimpleWorkflowManager:
 
     def generate_enhancement_pr_body(self, result: UpdateResult) -> str:
         """Generate simple PR body explaining what changed."""
+        trigger_reason = os.getenv("TRIGGER_REASON", "unknown")
+
+        # Standard enhancement PR body
         body = "This PR enhances your DRS workflow while preserving all your customizations.\n\n"
+
+        # Add major version upgrade notice for template changes (which happen during major releases)
+        if trigger_reason == "template_change":
+            body += "**Major version upgrade** - This update contains breaking changes. Please review before merging.\n\n"
 
         if result.structure_updated:
             body += "## Structure Updates\n"
