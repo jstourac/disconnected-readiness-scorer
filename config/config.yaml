@@ -150,6 +150,51 @@ exceptions:
     message: "*ConfigMap/inferenceservice-config{key:_example}*"
     reason: "_example is a documentation-only field in inferenceservice-config — not functional configuration"
 
+  # RHOAIENG-69993: Disconnected Readiness exceptions
+  # Upstream default kustomize paths — ODH uses config/overlays/odh/
+  - rules:
+      - image-manifest-complete
+      - no-image-tags
+    repo: kserve
+    paths:
+      - "config/default/**"
+      - "config/runtimes/**"
+      - "config/localmodelnodes/**"
+      - "config/localmodels/**"
+      - "config/llmisvcconfig/**"
+      - "config/llmisvc/**"
+      - "config/overlays/version-template/**"
+    reason: "Upstream KServe default kustomize — ODH/RHOAI uses config/overlays/odh/ which wires images through params.env and RELATED_IMAGE_* mechanism"
+    reference: "https://issues.redhat.com/browse/RHOAIENG-69993"
+
+  # Sample/test Go code not in production binary
+  - rules: "*"
+    repo: kserve
+    paths:
+      - "pkg/controller/v1alpha2/llmisvc/sample.go"
+      - "pkg/controller/v1beta1/inferenceservice/tests_common.go"
+    reason: "Sample/test Go code with hardcoded images — not compiled into production binary"
+    reference: "https://issues.redhat.com/browse/RHOAIENG-69993"
+
+  # Go import path false positive
+  - rules: no-image-tags
+    repo: kserve
+    paths:
+      - "pkg/apis/gie/v1alpha2pool/inferencepool_conversion.go"
+    message: "*sigs.k8s.io/gateway-api*"
+    reason: "Go module import path — not a container image reference"
+    reference: "https://issues.redhat.com/browse/RHOAIENG-69993"
+
+  # Orphan RELATED_IMAGE FAST vars — feature pending GA
+  - rules: image-manifest-complete
+    repo: kserve
+    paths:
+      - "kserve-module/pkg/kservemodule/images.go"
+    message: "*FAST*"
+    reason: "Fast model update RELATED_IMAGE vars — operator wiring pending for this feature"
+    expires: "2026-12-31"
+    reference: "https://issues.redhat.com/browse/RHOAIENG-69993"
+
   # --- kuberay ---
   - rules: "*"
     repo: kuberay
