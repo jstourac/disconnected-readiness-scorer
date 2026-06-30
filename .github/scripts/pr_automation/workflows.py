@@ -184,7 +184,7 @@ class SimpleWorkflowManager:
         )
 
     def update_workflow_safe(
-        self, existing_content: str, template_content: str
+        self, existing_content: str, template_content: str, trigger_reason: str | None = None
     ) -> tuple[str, UpdateResult]:
         """
         Update workflow safely with simple rules:
@@ -208,7 +208,7 @@ class SimpleWorkflowManager:
 
             # Central Authority Logic: Determine if propagation should happen
             should_propagate, propagation_reason = self._should_propagate_update(
-                current_uses, template_uses
+                current_uses, template_uses, trigger_reason
             )
 
             if not should_propagate:
