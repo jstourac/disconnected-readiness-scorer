@@ -148,7 +148,7 @@ Two regex patterns scan each line:
 | **Alias** | `egress` |
 | **File** | `rules/no_runtime_egress.py` |
 | **Entry point** | `run(repo_root, production_scope=None, **_kwargs) -> RuleResult` |
-| **Scanned files** | `.go`, `.py`, `.ts`, `.tsx`, `.sh` |
+| **Scanned files** | `.go`, `.py`, `.ts`, `.tsx`, `.sh`, `.yaml`, `.yml` |
 | **Filters** | Git-tracked only; skips files outside production scope |
 | **External deps** | None |
 
@@ -182,13 +182,18 @@ Detects outbound HTTP calls and network access in runtime source code that would
 - `curl`, `wget`
 - `hf download`, `huggingface-cli download`
 
+**YAML manifests** (`.yaml`, `.yml`):
+
+- `curl`, `wget` — catches inline shell commands in `command:`/`args:` fields of CronJob, Job, Pod, etc.
+- `hf download`, `huggingface-cli download`
+
 ### Severity heuristic
 
 Each match is classified by checking the surrounding line context:
 
 1. **Always-network patterns** (e.g., HuggingFace downloads marked with `always_network=True`) → **blocker**
 2. **Hardcoded external URL** — line contains `http://` or `https://` but no config indicators and not an internal URL → **blocker**
-3. **Internal URL** — URL matches `kubernetes.default.svc`, `.svc.cluster.local`, `localhost`, `127.0.0.1`, or `0.0.0.0` → **info**
+3. **Internal URL** — URL matches `kubernetes.default.svc`, `.svc.cluster.local`, `localhost`, `127.0.0.1`, `0.0.0.0`, or has a single-label hostname with no dots (e.g. `http://my-svc:8080/`) → **info**
 4. **Configurable URL** — line contains config indicators (`os.Getenv`, `os.environ`, `config.`, `settings.`, `viper.`, `process.env`, `${`, etc.) → **info**
 5. **No hardcoded URL** — pattern matched but no URL literal on the line → **info** (likely internal API call)
 

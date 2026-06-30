@@ -315,3 +315,89 @@ class TestRun:
         result = run(str(tmp_path))
         assert result.passed is False
         assert any("Rule crashed" in f.message for f in result.findings)
+
+
+class TestYamlEgress:
+    def test_yaml_curl_hardcoded_url_is_blocker(self, tmp_path):
+        f = tmp_path / "cronjob.yaml"
+        f.write_text(
+            'command:\n'
+            '  - /bin/sh\n'
+            '  - -c\n'
+            '  - curl https://external.example.com/repo/repodata.json\n'
+        )
+        result = run(str(tmp_path))
+        assert result.passed is False
+        blockers = [f for f in result.findings if f.severity == "blocker"]
+        assert len(blockers) == 1
+        assert "curl" in blockers[0].message
+
+    def test_yml_curl_hardcoded_url_is_blocker(self, tmp_path):
+        f = tmp_path / "job.yml"
+        f.write_text('args:\n  - curl https://external.example.com/data\n')
+        result = run(str(tmp_path))
+        assert result.passed is False
+        assert any(f.severity == "blocker" for f in result.findings)
+
+    def test_yaml_curl_configurable_url_is_info(self, tmp_path):
+        f = tmp_path / "pod.yaml"
+        f.write_text('command:\n  - curl ${BASE_URL}/health\n')
+        result = run(str(tmp_path))
+        assert result.passed is True
+        assert len(result.findings) == 1
+        assert result.findings[0].severity == "info"
+
+    def test_yaml_wget_hardcoded_url_is_blocker(self, tmp_path):
+        f = tmp_path / "job.yaml"
+        f.write_text('command:\n  - wget https://external.example.com/binary\n')
+        result = run(str(tmp_path))
+        assert result.passed is False
+        assert any("wget" in f.message for f in result.findings)
+
+    def test_yaml_comment_with_curl_is_skipped(self, tmp_path):
+        f = tmp_path / "manifest.yaml"
+        f.write_text('# curl https://example.com\nkind: CronJob\n')
+        result = run(str(tmp_path))
+        assert result.passed is True
+        assert len(result.findings) == 0
+
+    def test_yaml_curl_no_url_is_info(self, tmp_path):
+        f = tmp_path / "job.yaml"
+        f.write_text('command:\n  - curl -s /health\n')
+        result = run(str(tmp_path))
+        assert result.passed is True
+        assert len(result.findings) == 1
+        assert result.findings[0].severity == "info"
+
+    def test_yaml_curl_cluster_svc_is_info(self, tmp_path):
+        f = tmp_path / "cronjob.yaml"
+        f.write_text('command:\n  - curl -sf -X POST http://internal-svc:8080/internal/v1/cleanup\n')
+        result = run(str(tmp_path))
+        assert result.passed is True
+        assert len(result.findings) == 1
+        assert result.findings[0].severity == "info"
+        assert "cluster-internal" in result.findings[0].message
+
+    def test_yaml_curl_cluster_full_svc_is_info(self, tmp_path):
+        f = tmp_path / "cronjob.yaml"
+        f.write_text('command:\n  - curl -sf -X POST http://internal-svc.ns.svc.cluster.local:8080/internal/v1/cleanup\n')
+        result = run(str(tmp_path))
+        assert result.passed is True
+        assert len(result.findings) == 1
+        assert result.findings[0].severity == "info"
+        assert "cluster-internal" in result.findings[0].message
+
+    def test_sh_curl_cluster_svc_is_info(self, tmp_path):
+        f = tmp_path / "cleanup.sh"
+        f.write_text('curl -sf http://my-service:9090/health\n')
+        result = run(str(tmp_path))
+        assert result.passed is True
+        assert result.findings[0].severity == "info"
+
+    def test_sh_curl_cluster_svc_no_trailing_slash_is_info(self, tmp_path):
+        f = tmp_path / "check.sh"
+        f.write_text('curl -sf http://my-service:9090\n')
+        result = run(str(tmp_path))
+        assert result.passed is True
+        assert result.findings[0].severity == "info"
+        assert "cluster-internal" in result.findings[0].message
