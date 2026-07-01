@@ -135,7 +135,25 @@ exceptions:
     reason: "Frontend test infrastructure — not deployed in production"
 
   # --- kubeflow ---
-  # (no repo-specific exceptions)
+  - rules:
+      - image-manifest-complete
+      - no-image-tags
+    repo: kubeflow
+    paths:
+      - "components/odh-notebook-controller/config/development/ktunnel.yaml"
+    images:
+      - "quay.io/omrikiei/ktunnel:*"
+    reason: "Dev-only ktunnel webhook tunnel for local development — not deployed in production"
+    reference: "https://issues.redhat.com/browse/RHOAIENG-69990"
+
+  - rules: image-manifest-complete
+    repo: kubeflow
+    paths:
+      - "components/notebook-controller/skaffold.yaml"
+    images:
+      - "gcr.io/kubeflow-ci/notebook-controller"
+    reason: "Upstream Skaffold build config — build-time artifact target, not a runtime image"
+    reference: "https://issues.redhat.com/browse/RHOAIENG-69990"
 
   # --- notebooks ---
   - rules: "*"
