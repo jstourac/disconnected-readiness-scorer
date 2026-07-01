@@ -285,6 +285,20 @@ exceptions:
       - "**/kind-emulator/**"
     reason: "Local Kind cluster emulator — not deployed in production"
 
+  - rules: params-env-wiring
+    repo: workload-variant-autoscaler
+    paths:
+      - "config/overlays/cluster-scoped/kubernetes/**"
+      - "config/overlays/namespace-scoped/kubernetes/**"
+    reason: "Upstream Kubernetes kustomize overlays — OpenShift uses config/overlays/namespace-scoped/openshift/ which has params.env wiring"
+
+  - rules: params-env-wiring
+    repo: workload-variant-autoscaler
+    paths:
+      - "config/base"
+      - "config/base/manager"
+    reason: "Base kustomize manifests — image placeholder is replaced by the OpenShift overlay's params.env → configMapGenerator → replacements wiring"
+
   # --- opendatahub-operator ---
   - rules: "*"
     repo: opendatahub-operator
