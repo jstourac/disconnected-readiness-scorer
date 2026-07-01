@@ -39,6 +39,13 @@ _SKIP_FILENAMES = {
     "package.json",
 }
 
+NON_REGISTRY_DOMAINS = {
+    "github.com", "gitlab.com", "bitbucket.org",
+    "golang.org", "google.golang.org", "gopkg.in",
+    "k8s.io", "sigs.k8s.io",
+    "openshift.io",
+}
+
 
 def is_excluded_file(filepath: Path) -> bool:
     """Files that should produce info instead of blocker findings."""
@@ -104,6 +111,9 @@ def scan_file(
                 if any(len(p) <= 1 for p in repo_part.split("/")):
                     continue
                 if ref_part.startswith("@sha256:"):
+                    continue
+                domain = repo_part.split("/")[0].split(":")[0]
+                if domain in NON_REGISTRY_DOMAINS:
                     continue
                 if non_image_prefixes and any(repo_part.startswith(p) for p in non_image_prefixes):
                     continue

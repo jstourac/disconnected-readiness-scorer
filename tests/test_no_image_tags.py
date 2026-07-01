@@ -101,13 +101,10 @@ class TestScanFile:
         f.write_text('url := "http://registry.example.com/org/img:v1"')
         assert scan_file(f, tmp_path) == []
 
-    def test_non_image_prefix_skips_go_module_import(self, tmp_path):
+    def test_non_registry_domain_skips_go_module_import(self, tmp_path):
         f = tmp_path / "conversion.go"
         f.write_text('import "sigs.k8s.io/gateway-api-inference-extension@v1.4.0"\n')
-        findings = scan_file(
-            f, tmp_path, non_image_prefixes=["sigs.k8s.io/"],
-        )
-        assert findings == []
+        assert scan_file(f, tmp_path) == []
 
     def test_image_ref_not_url_still_detected(self, tmp_path):
         f = tmp_path / "deploy.yaml"

@@ -15,7 +15,6 @@ known_non_image_prefixes:
   - "feast.io/"
   - "kubeflow.org/"
   - "k8s.io/"
-  - "sigs.k8s.io/"
 
 params_env_filenames:
   notebooks:
