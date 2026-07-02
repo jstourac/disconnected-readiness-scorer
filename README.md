@@ -82,7 +82,7 @@ For detailed technical documentation of each rule — detection logic, regex pat
 | ------------ | ------------------------- | -------------------------------------------------------------------------------------- |
 | `csv`        | `image-manifest-complete` | Every container image ref is accounted for in the disconnected manifest                 |
 | `tags`       | `no-image-tags`           | All image refs use `@sha256:` digests, not mutable tags                                |
-| `egress`     | `no-runtime-egress`       | No hardcoded outbound HTTP calls in runtime code (Go, Python, TS, shell)               |
+| `egress`     | `no-runtime-egress`       | No hardcoded outbound HTTP calls in runtime code (Go, Python, TS, shell, YAML)         |
 | `python`     | `python-imports-bundled`  | Python deps are available from bundled/internal mirrors; no runtime `pip install`       |
 | `params_env` | `params-env-wiring`       | Full `params.env` → kustomize → rendered manifest → Go `os.Getenv` wiring is valid     |
 | `manifest`   | `operator-manifest`       | Builds the authoritative RELATED_IMAGE manifest from the opendatahub-operator source   |

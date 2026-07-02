@@ -50,6 +50,16 @@ EGRESS_PATTERNS = {
         (re.compile(r'\bwget\s+'), "wget invocation", False),
         (re.compile(r'\b(?:hf|huggingface-cli)\s+download\b'), "HuggingFace model download", True),
     ],
+    ".yaml": [
+        (re.compile(r'\bcurl\s+'), "curl invocation in YAML manifest", False),
+        (re.compile(r'\bwget\s+'), "wget invocation in YAML manifest", False),
+        (re.compile(r'\b(?:hf|huggingface-cli)\s+download\b'), "HuggingFace model download in YAML manifest", True),
+    ],
+    ".yml": [
+        (re.compile(r'\bcurl\s+'), "curl invocation in YAML manifest", False),
+        (re.compile(r'\bwget\s+'), "wget invocation in YAML manifest", False),
+        (re.compile(r'\b(?:hf|huggingface-cli)\s+download\b'), "HuggingFace model download in YAML manifest", True),
+    ],
 }
 
 INTERNAL_URL_PATTERNS = [
@@ -59,6 +69,11 @@ INTERNAL_URL_PATTERNS = [
     "127.0.0.1",
     "0.0.0.0",
 ]
+
+# Matches http(s)://hostname:port/ where hostname has no dots — unambiguously a
+# k8s in-cluster service name (e.g. http://maas-api:8080/). External hostnames
+# always contain at least one dot (TLD).
+_CLUSTER_SVC_URL = re.compile(r'https?://[a-z0-9][a-z0-9-]*(:[0-9]+)?(/|[\'"\s,)\]}]|$)')
 
 
 def has_configurable_url(line: str) -> bool:
@@ -137,8 +152,9 @@ def _run_impl(root: Path, result: RuleResult, production_scope) -> RuleResult:
                     configurable = has_configurable_url(line)
                     hardcoded_url = bool(re.search(r'https?://', line))
 
-                    internal_url = hardcoded_url and any(
-                        p in line for p in INTERNAL_URL_PATTERNS
+                    internal_url = hardcoded_url and (
+                        any(p in line for p in INTERNAL_URL_PATTERNS)
+                        or bool(_CLUSTER_SVC_URL.search(line))
                     )
 
                     if hardcoded_url and not configurable and not internal_url:
