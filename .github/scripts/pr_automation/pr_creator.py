@@ -10,28 +10,32 @@ from dataclasses import dataclass
 
 from github import UnknownObjectException
 
-from .utils import retry_github_operation
 from .config import AutomationConfig
-from .workflows import TemplateRenderer, SimpleWorkflowManager, UpdateResult
 from .github_client import GitHubClient
-
-
+from .utils import retry_github_operation
+from .workflows import SimpleWorkflowManager, TemplateRenderer, UpdateResult
 
 
 @dataclass
 class PRCreationResult:
     """Result of PR creation operation"""
+
     success: bool
     action: str  # 'created', 'skipped', 'simulated', 'error'
     reason: str
-    pr_url: str = ''
+    pr_url: str = ""
     pr_number: int = 0
 
 
 class PRCreator:
     """Handles PR creation for disconnected readiness workflows."""
 
-    def __init__(self, config: AutomationConfig, template_renderer: TemplateRenderer, github_client: GitHubClient):
+    def __init__(
+        self,
+        config: AutomationConfig,
+        template_renderer: TemplateRenderer,
+        github_client: GitHubClient,
+    ):
         self.config = config
         self.template_renderer = template_renderer
         self.github_client = github_client
@@ -55,9 +59,11 @@ class PRCreator:
             # to avoid a race where GitHub hasn't processed the auto-closure
             # by the time we create a new PR from the same branch name.
             try:
-                open_prs = list(repo.get_pulls(state='open', head=f"{repo.owner.login}:{branch_name}"))
+                open_prs = list(
+                    repo.get_pulls(state="open", head=f"{repo.owner.login}:{branch_name}")
+                )
                 for pr in open_prs:
-                    pr.edit(state='closed')
+                    pr.edit(state="closed")
                     print(f"    Closed existing PR #{pr.number} from branch '{branch_name}'")
             except Exception as e:
                 print(f"    Warning: could not close existing PRs: {e}")
@@ -79,10 +85,13 @@ class PRCreator:
             print(f"    Failed to ensure clean branch '{branch_name}': {e}")
             return False
 
-
-
-
-    def create_disconnected_readiness_pr(self, repo, branch_name_suffix: str = "", dry_run: bool = False, trigger_reason: str = "manual") -> PRCreationResult:
+    def create_disconnected_readiness_pr(
+        self,
+        repo,
+        branch_name_suffix: str = "",
+        dry_run: bool = False,
+        trigger_reason: str = "manual",
+    ) -> PRCreationResult:
         """Create or update a PR in a repository for disconnected readiness workflow."""
 
         try:
@@ -91,35 +100,40 @@ class PRCreator:
             existing_content = None
 
             try:
+
                 def _check_workflow_exists():
-                    return repo.get_contents('.github/workflows/disconnected-readiness.yml')
+                    return repo.get_contents(".github/workflows/disconnected-readiness.yml")
 
                 existing_file = retry_github_operation(_check_workflow_exists)
-                existing_content = existing_file.decoded_content.decode('utf-8')
+                existing_content = existing_file.decoded_content.decode("utf-8")
             except UnknownObjectException:
                 pass  # File doesn't exist, we'll create a new one
 
             if existing_file and existing_content:
                 # Workflow exists - check if it needs updates
                 return self._handle_existing_workflow(
-                    repo, existing_file, existing_content,
-                    branch_name_suffix, dry_run, trigger_reason
+                    repo,
+                    existing_file,
+                    existing_content,
+                    branch_name_suffix,
+                    dry_run,
+                    trigger_reason,
                 )
-            else:
-                # No existing workflow - create new one
-                return self._create_new_workflow(
-                    repo, branch_name_suffix, dry_run
-                )
+            # No existing workflow - create new one
+            return self._create_new_workflow(repo, branch_name_suffix, dry_run)
 
         except Exception as e:
-            return PRCreationResult(
-                success=False,
-                action='error',
-                reason=str(e)
-            )
+            return PRCreationResult(success=False, action="error", reason=str(e))
 
-    def _handle_existing_workflow(self, repo, existing_file, existing_content: str,
-                                  branch_name_suffix: str, dry_run: bool, trigger_reason: str = "manual") -> PRCreationResult:
+    def _handle_existing_workflow(
+        self,
+        repo,
+        existing_file,
+        existing_content: str,
+        branch_name_suffix: str,
+        dry_run: bool,
+        trigger_reason: str = "manual",
+    ) -> PRCreationResult:
         """Handle updates to existing workflow while preserving team customizations."""
 
         # Generate latest template for comparison
@@ -127,27 +141,27 @@ class PRCreator:
 
         # Use simple approach: only touch 'with' section, preserve everything else
         try:
-            updated_content, update_workflow_result = self.workflow_manager.update_workflow_safe(existing_content, template_content)
+            updated_content, update_workflow_result = self.workflow_manager.update_workflow_safe(
+                existing_content, template_content
+            )
         except Exception as e:
             return PRCreationResult(
-                success=False,
-                action='error',
-                reason=f'Failed to analyze workflow updates: {e}'
+                success=False, action="error", reason=f"Failed to analyze workflow updates: {e}"
             )
 
-        if not update_workflow_result.needs_update and trigger_reason != 'template_change':
+        if not update_workflow_result.needs_update and trigger_reason != "template_change":
             return PRCreationResult(
                 success=True,
-                action='skipped',
-                reason='Workflow already up to date',
+                action="skipped",
+                reason="Workflow already up to date",
             )
 
         # For template changes, create enhancement PR even if no technical updates needed
-        if not update_workflow_result.needs_update and trigger_reason == 'template_change':
+        if not update_workflow_result.needs_update and trigger_reason == "template_change":
             return PRCreationResult(
                 success=True,
-                action='skipped',
-                reason='Template change: workflow already uses latest template structure',
+                action="skipped",
+                reason="Template change: workflow already uses latest template structure",
             )
 
         if dry_run:
@@ -155,23 +169,28 @@ class PRCreator:
             if update_workflow_result.structure_updated:
                 update_details.append("structure update")
             if update_workflow_result.new_parameters:
-                update_details.append(f"{len(update_workflow_result.new_parameters)} new parameters: {', '.join(update_workflow_result.new_parameters)}")
+                update_details.append(
+                    f"{len(update_workflow_result.new_parameters)} new parameters: {', '.join(update_workflow_result.new_parameters)}"
+                )
             if update_workflow_result.removed_parameters:
-                update_details.append(f"{len(update_workflow_result.removed_parameters)} deprecated parameters removed: {', '.join(update_workflow_result.removed_parameters)}")
+                update_details.append(
+                    f"{len(update_workflow_result.removed_parameters)} deprecated parameters removed: {', '.join(update_workflow_result.removed_parameters)}"
+                )
 
             return PRCreationResult(
                 success=True,
-                action='simulated',
-                reason=f'Would enhance workflow: {", ".join(update_details)}',
+                action="simulated",
+                reason=f"Would enhance workflow: {', '.join(update_details)}",
             )
 
         # Create enhancement PR
         return self._create_enhancement_pr(
-            repo, existing_file, updated_content, update_workflow_result,
-            branch_name_suffix
+            repo, existing_file, updated_content, update_workflow_result, branch_name_suffix
         )
 
-    def _create_new_workflow(self, repo, branch_name_suffix: str, dry_run: bool) -> PRCreationResult:
+    def _create_new_workflow(
+        self, repo, branch_name_suffix: str, dry_run: bool
+    ) -> PRCreationResult:
         """Create a new workflow from template."""
 
         # Generate workflow content from template
@@ -180,48 +199,55 @@ class PRCreator:
         if dry_run:
             return PRCreationResult(
                 success=True,
-                action='simulated',
-                reason='Would create new workflow with all default rules',
+                action="simulated",
+                reason="Would create new workflow with all default rules",
             )
 
         # Create branch and PR
         return self._create_workflow_pr(
-            repo, workflow_content,
+            repo,
+            workflow_content,
             "Add disconnected readiness workflow",
             self._generate_new_workflow_pr_body(),
-            branch_name_suffix
+            branch_name_suffix,
         )
 
-    def _create_enhancement_pr(self, repo, existing_file, enhanced_content: str, update_workflow_result: UpdateResult,
-                               branch_name_suffix: str) -> PRCreationResult:
+    def _create_enhancement_pr(
+        self,
+        repo,
+        existing_file,
+        enhanced_content: str,
+        update_workflow_result: UpdateResult,
+        branch_name_suffix: str,
+    ) -> PRCreationResult:
         """Create PR for workflow enhancements."""
 
         pr_title = "Update DRS workflow with new changes"
         pr_body = self._generate_enhanced_pr_body(update_workflow_result)
 
         return self._update_workflow_pr(
-            repo, existing_file, enhanced_content, pr_title, pr_body,
-            branch_name_suffix
+            repo, existing_file, enhanced_content, pr_title, pr_body, branch_name_suffix
         )
 
-    def _create_workflow_pr(self, repo, workflow_content: str,
-                            pr_title: str, pr_body: str, branch_name_suffix: str) -> PRCreationResult:
+    def _create_workflow_pr(
+        self, repo, workflow_content: str, pr_title: str, pr_body: str, branch_name_suffix: str
+    ) -> PRCreationResult:
         """Create a new workflow file and PR."""
 
         try:
             default_branch = repo.default_branch
 
             # Use fixed branch name
-            branch_name = 'drs-workflow-add'
+            branch_name = "drs-workflow-add"
             if branch_name_suffix:
-                branch_name += f'-{branch_name_suffix}'
+                branch_name += f"-{branch_name_suffix}"
 
             # Ensure clean branch (delete/recreate)
             if not self._ensure_clean_branch(repo, branch_name, default_branch):
                 return PRCreationResult(
                     success=False,
-                    action='error',
-                    reason=f'Failed to create clean branch: {branch_name}'
+                    action="error",
+                    reason=f"Failed to create clean branch: {branch_name}",
                 )
 
             # Create workflow file
@@ -230,54 +256,57 @@ class PRCreator:
                     ".github/workflows/disconnected-readiness.yml",
                     "Add disconnected readiness workflow",
                     workflow_content,
-                    branch=branch_name
+                    branch=branch_name,
                 )
+
             retry_github_operation(_create_workflow_file)
 
             # Create PR (with retry)
             def _create_pull_request():
                 return repo.create_pull(
-                    title=pr_title,
-                    body=pr_body,
-                    head=branch_name,
-                    base=default_branch
+                    title=pr_title, body=pr_body, head=branch_name, base=default_branch
                 )
 
             pr = retry_github_operation(_create_pull_request)
 
             return PRCreationResult(
                 success=True,
-                action='created',
-                reason='PR created successfully',
+                action="created",
+                reason="PR created successfully",
                 pr_url=pr.html_url,
                 pr_number=pr.number,
             )
 
         except Exception as e:
             return PRCreationResult(
-                success=False,
-                action='error',
-                reason=f'Failed to create PR: {e}'
+                success=False, action="error", reason=f"Failed to create PR: {e}"
             )
 
-    def _update_workflow_pr(self, repo, existing_file, updated_content: str, pr_title: str, pr_body: str,
-                            branch_name_suffix: str) -> PRCreationResult:
+    def _update_workflow_pr(
+        self,
+        repo,
+        existing_file,
+        updated_content: str,
+        pr_title: str,
+        pr_body: str,
+        branch_name_suffix: str,
+    ) -> PRCreationResult:
         """Update existing workflow file and create PR."""
 
         try:
             default_branch = repo.default_branch
 
             # Use fixed branch name for updates
-            branch_name = 'drs-workflow-update'
+            branch_name = "drs-workflow-update"
             if branch_name_suffix:
-                branch_name += f'-{branch_name_suffix}'
+                branch_name += f"-{branch_name_suffix}"
 
             # Ensure clean branch (delete/recreate)
             if not self._ensure_clean_branch(repo, branch_name, default_branch):
                 return PRCreationResult(
                     success=False,
-                    action='error',
-                    reason=f'Failed to create clean branch: {branch_name}'
+                    action="error",
+                    reason=f"Failed to create clean branch: {branch_name}",
                 )
 
             # Update workflow file
@@ -287,36 +316,31 @@ class PRCreator:
                     "Update disconnected readiness workflow (preserves customizations)",
                     updated_content,
                     existing_file.sha,
-                    branch=branch_name
+                    branch=branch_name,
                 )
+
             retry_github_operation(_update_workflow_file)
 
             # Create PR (with retry)
             def _create_pull_request():
                 return repo.create_pull(
-                    title=pr_title,
-                    body=pr_body,
-                    head=branch_name,
-                    base=default_branch
+                    title=pr_title, body=pr_body, head=branch_name, base=default_branch
                 )
 
             pr = retry_github_operation(_create_pull_request)
 
             return PRCreationResult(
                 success=True,
-                action='updated',
-                reason='Enhancement PR created successfully',
+                action="updated",
+                reason="Enhancement PR created successfully",
                 pr_url=pr.html_url,
                 pr_number=pr.number,
             )
 
         except Exception as e:
             return PRCreationResult(
-                success=False,
-                action='error',
-                reason=f'Failed to create enhancement PR: {e}'
+                success=False, action="error", reason=f"Failed to create enhancement PR: {e}"
             )
-
 
     def _generate_new_workflow_pr_body(self) -> str:
         """Generate PR body for new workflow creation."""

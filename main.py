@@ -82,9 +82,7 @@ def _load_yaml_file(config_path):
     try:
         return yaml.safe_load(text) or {}
     except yaml.YAMLError as exc:
-        raise ValueError(
-            f"Failed to parse {config_path}: {exc}"
-        ) from exc
+        raise ValueError(f"Failed to parse {config_path}: {exc}") from exc
 
 
 _SCHEMA_PATH = Path(__file__).parent / "schemas" / "config.schema.json"
@@ -95,15 +93,11 @@ def _validate_config_schema(raw, config_path):
     try:
         schema = json.loads(_SCHEMA_PATH.read_text())
     except (OSError, json.JSONDecodeError) as exc:
-        raise ConfigError(
-            f"Cannot read config schema {_SCHEMA_PATH}: {exc}"
-        ) from exc
+        raise ConfigError(f"Cannot read config schema {_SCHEMA_PATH}: {exc}") from exc
     try:
         jsonschema.validate(raw, schema)
     except jsonschema.ValidationError as exc:
-        raise ValueError(
-            f"{config_path}: schema validation error: {exc.message}"
-        ) from exc
+        raise ValueError(f"{config_path}: schema validation error: {exc.message}") from exc
 
 
 def load_central_config(config_path):
@@ -111,9 +105,7 @@ def load_central_config(config_path):
     if raw is None:
         return {"exceptions": []}
     if not isinstance(raw, dict):
-        raise ValueError(
-            f"{config_path} must be a YAML mapping, got {type(raw).__name__}"
-        )
+        raise ValueError(f"{config_path} must be a YAML mapping, got {type(raw).__name__}")
     for exc in raw.get("exceptions") or []:
         if isinstance(exc, dict) and isinstance(exc.get("expires"), date):
             exc["expires"] = exc["expires"].isoformat()
@@ -143,8 +135,7 @@ def _validate_exceptions(exceptions, config_path):
         rules = exc.get("rules")
         if not rules:
             raise ValueError(
-                f"Exception entry {i + 1} in {config_path} "
-                f"is missing required 'rules' field"
+                f"Exception entry {i + 1} in {config_path} is missing required 'rules' field"
             )
         _validate_rules_field(rules, i, config_path)
         if not exc.get("reason"):
@@ -186,22 +177,16 @@ def _validate_rules_field(rules, entry_index, config_path):
     valid_names = VALID_RULE_NAMES_SORTED
     if isinstance(rules, str):
         if rules != ANY_RULE and rules not in VALID_RULE_NAMES:
-            raise ValueError(
-                f"{label}: unknown rule name '{rules}'. "
-                f"Valid names: {valid_names}"
-            )
+            raise ValueError(f"{label}: unknown rule name '{rules}'. Valid names: {valid_names}")
     elif isinstance(rules, list):
         for item in rules:
             if item == ANY_RULE:
                 raise ValueError(
                     f"{label}: wildcard '{ANY_RULE}' is not allowed inside a list. "
-                    f"Use rules: \"{ANY_RULE}\" as a string instead"
+                    f'Use rules: "{ANY_RULE}" as a string instead'
                 )
             if item not in VALID_RULE_NAMES:
-                raise ValueError(
-                    f"{label}: unknown rule name '{item}'. "
-                    f"Valid names: {valid_names}"
-                )
+                raise ValueError(f"{label}: unknown rule name '{item}'. Valid names: {valid_names}")
 
 
 def _path_matches(filepath: str, pattern: str) -> bool:
@@ -216,9 +201,8 @@ def _path_matches(filepath: str, pattern: str) -> bool:
     """
     if fnmatch(filepath, pattern):
         return True
-    if pattern.startswith("**/"):
-        if fnmatch(filepath, pattern[3:]):
-            return True
+    if pattern.startswith("**/") and fnmatch(filepath, pattern[3:]):
+        return True
     if pattern.endswith("/**"):
         dir_pattern = pattern[:-3]
         if fnmatch(filepath, dir_pattern):
@@ -250,10 +234,7 @@ def apply_exceptions(results, exceptions, repo_name, *, today=None):
     hits = [0] * len(exceptions)
     if today is None:
         today = date.today()
-    exc_with_rules = [
-        (exc, _normalize_rules(exc.get("rules", "")))
-        for exc in exceptions
-    ]
+    exc_with_rules = [(exc, _normalize_rules(exc.get("rules", ""))) for exc in exceptions]
     for result in results:
         for finding in result.findings:
             if finding.severity != "blocker":
@@ -273,17 +254,14 @@ def apply_exceptions(results, exceptions, repo_name, *, today=None):
                         if exc_repo != repo_name.rsplit("/", 1)[-1]:
                             continue
                 exc_paths = exc.get("paths") or []
-                if exc_paths:
-                    if not any(_path_matches(finding.file, p) for p in exc_paths):
-                        continue
+                if exc_paths and not any(_path_matches(finding.file, p) for p in exc_paths):
+                    continue
                 exc_images = exc.get("images") or []
-                if exc_images:
-                    if not any(fnmatch(finding.image, pat) for pat in exc_images):
-                        continue
+                if exc_images and not any(fnmatch(finding.image, pat) for pat in exc_images):
+                    continue
                 exc_message = exc.get("message")
-                if exc_message:
-                    if not fnmatch(finding.message, exc_message):
-                        continue
+                if exc_message and not fnmatch(finding.message, exc_message):
+                    continue
                 reason = exc.get("reason", "configured exception")
                 finding.message += f" [Exception: {reason}]"
                 finding.severity = "info"
@@ -294,50 +272,58 @@ def apply_exceptions(results, exceptions, repo_name, *, today=None):
     return hits
 
 
-
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         description="Score a repo's disconnected / air-gapped readiness.",
     )
     parser.add_argument(
-        "repo_root", nargs="?", default=".",
+        "repo_root",
+        nargs="?",
+        default=".",
         help="Path to the target repository (default: current directory)",
     )
     parser.add_argument(
-        "--rules", default="all",
+        "--rules",
+        default="all",
         help="Comma-separated rule aliases, 'all', or empty (default: all). "
-             "'all' or empty runs every registered rule. "
-             f"Available: {', '.join(RULE_REGISTRY)}",
+        "'all' or empty runs every registered rule. "
+        f"Available: {', '.join(RULE_REGISTRY)}",
     )
     parser.add_argument(
-        "--report", default="markdown",
+        "--report",
+        default="markdown",
         help="Output format: 'markdown', 'json', or comma-separated "
-             "'json,markdown' for dual output (default: markdown).",
+        "'json,markdown' for dual output (default: markdown).",
     )
     parser.add_argument(
         "--operator-path",
         help="Path to a pre-cloned opendatahub-operator. "
-             "If omitted, clones to a temporary directory when needed.",
+        "If omitted, clones to a temporary directory when needed.",
     )
     parser.add_argument(
-        "--output", "-o", nargs="*",
+        "--output",
+        "-o",
+        nargs="*",
         help="Write report(s) to file(s). With dual --report, provide "
-             "one -o per format in the same order.",
+        "one -o per format in the same order.",
     )
     parser.add_argument(
         "--config",
         help=f"Path to central config.yaml (default: {CENTRAL_CONFIG_PATH}).",
     )
     parser.add_argument(
-        "--no-production-scope", action="store_true",
+        "--no-production-scope",
+        action="store_true",
         help="Disable production-scope analysis (Dockerfile + go list). "
-             "All files are scanned at full severity.",
+        "All files are scanned at full severity.",
     )
     parser.add_argument(
-        "--verbose", "-v", action="store_true",
+        "--verbose",
+        "-v",
+        action="store_true",
         help="Print detailed diagnostic output to stderr (per-step timing, "
-             "file scan progress, production scope decisions, config loading). "
-             "When used with --report json, includes files_checked per rule.",
+        "file scan progress, production scope decisions, config loading). "
+        "When used with --report json, includes files_checked per rule.",
     )
     parser.add_argument(
         "--arch-analyzer",
@@ -345,9 +331,10 @@ def parse_args(argv=None):
         help="Path to arch-analyzer binary (default: bin/arch-analyzer).",
     )
     parser.add_argument(
-        "--list-expiring", action="store_true",
+        "--list-expiring",
+        action="store_true",
         help="List expired and soon-to-expire exceptions and exit. "
-             "Exit code 0 if none, 2 if any found.",
+        "Exit code 0 if none, 2 if any found.",
     )
     return parser.parse_args(argv)
 
@@ -387,24 +374,28 @@ def adapt_manifest_result(manifest):
     # passed stays True: manifest issues are informational/warning only,
     # not blockers — the csv rule handles actual disconnected-readiness failures.
     result = RuleResult(rule="operator-manifest")
-    all_vars = sorted(set(e.env_var for e in manifest.images))
-    result.findings.append(Finding(
-        severity="info",
-        file="",
-        line=0,
-        image="",
-        message=f"Parsed {len(all_vars)} RELATED_IMAGE vars "
-                f"across {len(manifest.components)} components.",
-    ))
+    all_vars = sorted({e.env_var for e in manifest.images})
+    result.findings.append(
+        Finding(
+            severity="info",
+            file="",
+            line=0,
+            image="",
+            message=f"Parsed {len(all_vars)} RELATED_IMAGE vars "
+            f"across {len(manifest.components)} components.",
+        )
+    )
     if manifest.known_issues:
         for issue in manifest.known_issues:
-            result.findings.append(Finding(
-                severity="info",
-                file="",
-                line=0,
-                image="",
-                message=f"Known issue in operator manifest: {issue}",
-            ))
+            result.findings.append(
+                Finding(
+                    severity="info",
+                    file="",
+                    line=0,
+                    image="",
+                    message=f"Known issue in operator manifest: {issue}",
+                )
+            )
     return result
 
 
@@ -434,7 +425,9 @@ def print_summary(score, results, log_file=None):
     print(f"\nBlockers: {total_blockers} | Passed: {total_passed}", file=out)
 
 
-def render_json(score, results, repo_name, verbose=False, exceptions=None, exception_hits=None, today=None):
+def render_json(
+    score, results, repo_name, verbose=False, exceptions=None, exception_hits=None, today=None
+):
     snippets = _build_exception_snippets(results)
     rules_data = []
     for r in results:
@@ -444,10 +437,14 @@ def render_json(score, results, repo_name, verbose=False, exceptions=None, excep
             "blockers": sum(1 for f in r.findings if f.severity == "blocker"),
             "infos": sum(1 for f in r.findings if f.severity == "info"),
             "findings": [
-                {"severity": f.severity, "file": f.file, "line": f.line,
-                 "image": f.image, "message": f.message}
-                for f in sorted(r.findings,
-                                key=lambda f: SEVERITY_ORDER.get(f.severity, 99))
+                {
+                    "severity": f.severity,
+                    "file": f.file,
+                    "line": f.line,
+                    "image": f.image,
+                    "message": f.message,
+                }
+                for f in sorted(r.findings, key=lambda f: SEVERITY_ORDER.get(f.severity, 99))
             ],
         }
         if verbose and r.files_checked:
@@ -509,6 +506,7 @@ def _render_template_simple(template_str, context):
 
     Handles {{ var }}, {{ var | upper }}, and {% for x in y %}...{% endfor %}.
     """
+
     def resolve(expr, local_ctx):
         expr = expr.strip()
         filt = None
@@ -519,17 +517,14 @@ def _render_template_simple(template_str, context):
         parts = expr.split(".")
         val = local_ctx
         for p in parts:
-            if isinstance(val, dict):
-                val = val.get(p, "")
-            else:
-                val = getattr(val, p, "")
+            val = val.get(p, "") if isinstance(val, dict) else getattr(val, p, "")
         val = str(val)
         if filt == "upper":
             val = val.upper()
         return val
 
     for_pattern = re.compile(
-        r'\{%\s*for\s+(\w+)\s+in\s+(\w+)\s*%\}(.*?)\{%\s*endfor\s*%\}',
+        r"\{%\s*for\s+(\w+)\s+in\s+(\w+)\s*%\}(.*?)\{%\s*endfor\s*%\}",
         re.DOTALL,
     )
 
@@ -537,27 +532,32 @@ def _render_template_simple(template_str, context):
         var_name = m.group(1)
         collection_name = m.group(2)
         body = m.group(3).strip("\n")
-        if re.search(r'\{%\s*for\s+', body):
-            raise ValueError("Nested {% for %} blocks are not supported by the built-in template renderer.")
+        if re.search(r"\{%\s*for\s+", body):
+            raise ValueError(
+                "Nested {% for %} blocks are not supported by the built-in template renderer."
+            )
         collection = context.get(collection_name, [])
         pieces = []
         for item in collection:
             local = {**context, var_name: item}
+
+            def replace_var(mv, local_context=local):
+                return resolve(mv.group(1), local_context)
+
             rendered = re.sub(
-                r'\{\{\s*(.+?)\s*\}\}',
-                lambda mv: resolve(mv.group(1), local),
+                r"\{\{\s*(.+?)\s*\}\}",
+                replace_var,
                 body,
             )
             pieces.append(rendered)
         return "\n".join(pieces)
 
     output = for_pattern.sub(expand_for, template_str)
-    output = re.sub(
-        r'\{\{\s*(.+?)\s*\}\}',
+    return re.sub(
+        r"\{\{\s*(.+?)\s*\}\}",
         lambda mv: resolve(mv.group(1), context),
         output,
     )
-    return output
 
 
 def _escape_md_cell(value):
@@ -590,14 +590,13 @@ def _build_false_positive_section(snippets):
     count = len(snippets)
     noun = "finding" if count == 1 else "findings"
     readme_url = (
-        "https://github.com/opendatahub-io/disconnected-readiness-scorer"
-        "#reporting-false-positives"
+        "https://github.com/opendatahub-io/disconnected-readiness-scorer#reporting-false-positives"
     )
     lines = [
         "## Reporting False Positives",
         "",
         f"{count} blocker {noun} above may be false positives.",
-        f"To unblock your PR, add an exception to the central config file.",
+        "To unblock your PR, add an exception to the central config file.",
         f"See [{readme_url}]({readme_url}) for the format and required fields.",
         "",
     ]
@@ -610,9 +609,7 @@ def _build_exceptions_section(exceptions, exception_hits):
     if not exceptions or not exception_hits:
         return ""
     applied = [
-        (exc, exception_hits[i])
-        for i, exc in enumerate(exceptions)
-        if exception_hits[i] > 0
+        (exc, exception_hits[i]) for i, exc in enumerate(exceptions) if exception_hits[i] > 0
     ]
     if not applied:
         return ""
@@ -737,9 +734,7 @@ def _build_expired_exceptions_section(exceptions, *, today=None):
         repo = _escape_md_cell(exc.get("repo", ""))
         reason = _escape_md_cell(exc.get("reason", ""))
         expires = exc["expires"].isoformat()
-        lines.append(
-            f"| {rules_cell} | {repo} | {reason} | {expires} | {days_since} |"
-        )
+        lines.append(f"| {rules_cell} | {repo} | {reason} | {expires} | {days_since} |")
     lines.append("")
     return "\n".join(lines)
 
@@ -755,12 +750,14 @@ def render_markdown(score, results, repo_name, exceptions=None, exception_hits=N
     for r in results:
         for f in r.findings:
             if f.severity == "blocker":
-                blocker_rows.append({
-                    "rule": _escape_md_cell(r.rule),
-                    "file": _escape_md_cell(f.file),
-                    "line": f.line if f.line else "",
-                    "message": _escape_md_cell(f.message),
-                })
+                blocker_rows.append(
+                    {
+                        "rule": _escape_md_cell(r.rule),
+                        "file": _escape_md_cell(f.file),
+                        "line": f.line if f.line else "",
+                        "message": _escape_md_cell(f.message),
+                    }
+                )
 
     context = {
         "repo_name": repo_name,
@@ -782,13 +779,12 @@ def render_markdown(score, results, repo_name, exceptions=None, exception_hits=N
         "expired_exceptions_section": _build_expired_exceptions_section(
             exceptions or [], today=today
         ),
-        "false_positive_section": _build_false_positive_section(
-            _build_exception_snippets(results)
-        ),
+        "false_positive_section": _build_false_positive_section(_build_exception_snippets(results)),
     }
 
     try:
         import jinja2
+
         env = jinja2.Environment(autoescape=False, trim_blocks=True, lstrip_blocks=True)
         tmpl = env.from_string(template_str)
         return tmpl.render(**context)
@@ -822,9 +818,7 @@ def _load_all_exceptions(args):
 
     Returns (exceptions, error_result_or_None).
     """
-    config_path = args.config or str(
-        Path(__file__).parent / CENTRAL_CONFIG_PATH
-    )
+    config_path = args.config or str(Path(__file__).parent / CENTRAL_CONFIG_PATH)
     central = load_central_config(config_path)
     return central["exceptions"], None
 
@@ -842,9 +836,7 @@ def _run_arch_analyzer(arch_analyzer_bin: str, target_dir: str) -> ArchAnalyzerR
         try:
             os.remove(json_path)
         except OSError as exc:
-            raise ArchAnalyzerError(
-                f"Failed to remove stale {json_path}: {exc}"
-            ) from exc
+            raise ArchAnalyzerError(f"Failed to remove stale {json_path}: {exc}") from exc
 
     if not os.path.isfile(arch_analyzer_bin):
         raise ArchAnalyzerError(
@@ -856,35 +848,35 @@ def _run_arch_analyzer(arch_analyzer_bin: str, target_dir: str) -> ArchAnalyzerR
         subprocess.run(
             [arch_analyzer_bin, "extract", ".", "--extractors", "docker,kustomize"],
             cwd=target_dir,
-            capture_output=True, timeout=300, check=True,
+            capture_output=True,
+            timeout=300,
+            check=True,
         )
     except subprocess.CalledProcessError as e:
-        stderr_msg = e.stderr.decode(errors='replace') if e.stderr else str(e)
-        raise ArchAnalyzerError(
-            f"arch-analyzer failed on {target_dir}:\n{stderr_msg}"
-        ) from e
+        stderr_msg = e.stderr.decode(errors="replace") if e.stderr else str(e)
+        raise ArchAnalyzerError(f"arch-analyzer failed on {target_dir}:\n{stderr_msg}") from e
     except (subprocess.TimeoutExpired, OSError) as e:
-        raise ArchAnalyzerError(
-            f"arch-analyzer failed on {target_dir}: {e}"
-        ) from e
+        raise ArchAnalyzerError(f"arch-analyzer failed on {target_dir}: {e}") from e
 
     if not os.path.isfile(json_path):
-        raise ArchAnalyzerError(
-            f"arch-analyzer did not generate {json_path}"
-        )
+        raise ArchAnalyzerError(f"arch-analyzer did not generate {json_path}")
 
     try:
         with open(json_path) as f:
             return ArchAnalyzerResult.from_dict(json.load(f))
     except (json.JSONDecodeError, OSError) as e:
-        raise ArchAnalyzerError(
-            f"Failed to parse {json_path}: {e}"
-        ) from e
+        raise ArchAnalyzerError(f"Failed to parse {json_path}: {e}") from e
 
 
-def _run(args, operator_path, *,
-         manifest=None, manifest_env_vars=None,
-         operator_arch_data=None, log_stream=None):
+def _run(
+    args,
+    operator_path,
+    *,
+    manifest=None,
+    manifest_env_vars=None,
+    operator_arch_data=None,
+    log_stream=None,
+):
     """Run all selected rules on a repo and produce reports.
 
     Optional keyword args allow callers (e.g. run_all.py) to pass
@@ -915,9 +907,7 @@ def _run(args, operator_path, *,
         docker_contexts = central_cfg.get("docker_contexts", {}).get(repo_name.split("/")[-1], {})
     non_image_prefixes = central_cfg.get("known_non_image_prefixes", [])
     _pef_map = central_cfg.get("params_env_filenames", {})
-    params_env_extra = (
-        _pef_map.get(repo_name) or _pef_map.get(repo_name.split("/")[-1]) or []
-    )
+    params_env_extra = _pef_map.get(repo_name) or _pef_map.get(repo_name.split("/")[-1]) or []
     need_manifest = "manifest" in selected
     for key in selected:
         if not RULE_REGISTRY[key].get("needs_manifest"):
@@ -959,7 +949,9 @@ def _run(args, operator_path, *,
         op_manifest_mod = importlib.import_module("rules.operator_manifest")
 
         # Parse manifest entries once (both source_folders and component_keys)
-        source_folders_map, component_keys_map = op_manifest_mod.parse_manifest_entries(operator_path)
+        source_folders_map, component_keys_map = op_manifest_mod.parse_manifest_entries(
+            operator_path
+        )
         manifest_source_folders = source_folders_map.get(repo_basename)
         if manifest_source_folders:
             print(
@@ -972,7 +964,8 @@ def _run(args, operator_path, *,
             component_key = component_keys_map.get(repo_basename)
             if component_key:
                 raw_overlays = op_manifest_mod.parse_overlay_paths_from_arch_data(
-                    operator_arch_data, component_key,
+                    operator_arch_data,
+                    component_key,
                 )
                 if raw_overlays and manifest_source_folders:
                     overlay_paths = [
@@ -1038,16 +1031,18 @@ def _run(args, operator_path, *,
 
     exceptions = central_cfg["exceptions"]
     today = date.today()
-    exception_hits = apply_exceptions(results, exceptions, repo_name, today=today) if exceptions else []
+    exception_hits = (
+        apply_exceptions(results, exceptions, repo_name, today=today) if exceptions else []
+    )
 
     score = compute_score(results)
     print_summary(score, results, log_file=_stderr)
 
     formats = [f.strip() for f in args.report.split(",")]
-    _VALID_FORMATS = {"json", "markdown"}
+    _valid_formats = {"json", "markdown"}
     for fmt in formats:
-        if fmt not in _VALID_FORMATS:
-            raise SystemExit(f"Unknown report format '{fmt}'. Valid: {', '.join(_VALID_FORMATS)}")
+        if fmt not in _valid_formats:
+            raise SystemExit(f"Unknown report format '{fmt}'. Valid: {', '.join(_valid_formats)}")
 
     outputs = args.output or []
 
@@ -1057,7 +1052,7 @@ def _run(args, operator_path, *,
             f"Provide one -o per --report format, in the same order."
         )
 
-    exc_args = dict(exceptions=exceptions, exception_hits=exception_hits, today=today)
+    exc_args = {"exceptions": exceptions, "exception_hits": exception_hits, "today": today}
 
     for i, fmt in enumerate(formats):
         if fmt == "json":
@@ -1079,9 +1074,7 @@ def main(argv=None):
     args = parse_args(argv)
 
     if args.list_expiring:
-        config_path = args.config or str(
-            Path(__file__).parent / CENTRAL_CONFIG_PATH
-        )
+        config_path = args.config or str(Path(__file__).parent / CENTRAL_CONFIG_PATH)
         central_cfg = load_central_config(config_path)
         exceptions = central_cfg["exceptions"]
         dummy_hits = [0] * len(exceptions)
@@ -1092,27 +1085,28 @@ def main(argv=None):
         if expired:
             found = True
             print(f"{len(expired)} expired exception(s) — no longer applied:\n")
-            print(f"{'Rules':<25} {'Repo':<30} {'Expired On':<12} "
-                  f"{'Days Ago':<10} Reason")
+            print(f"{'Rules':<25} {'Repo':<30} {'Expired On':<12} {'Days Ago':<10} Reason")
             print("-" * 100)
             for exc, days_since in expired:
-                print(f"{exc.get('rules', ''):<25} "
-                      f"{exc.get('repo', ''):<30} "
-                      f"{exc['expires'].isoformat():<12} {days_since:<10} "
-                      f"{exc.get('reason', '')}")
+                print(
+                    f"{exc.get('rules', ''):<25} "
+                    f"{exc.get('repo', ''):<30} "
+                    f"{exc['expires'].isoformat():<12} {days_since:<10} "
+                    f"{exc.get('reason', '')}"
+                )
             print()
         if expiring:
             found = True
-            print(f"{len(expiring)} exception(s) expiring within "
-                  f"{_EXPIRY_WARNING_DAYS} days:\n")
-            print(f"{'Rules':<25} {'Repo':<30} {'Expires':<12} "
-                  f"{'Days Left':<10} Reason")
+            print(f"{len(expiring)} exception(s) expiring within {_EXPIRY_WARNING_DAYS} days:\n")
+            print(f"{'Rules':<25} {'Repo':<30} {'Expires':<12} {'Days Left':<10} Reason")
             print("-" * 100)
             for exc, days_remaining, _ in expiring:
-                print(f"{exc.get('rules', ''):<25} "
-                      f"{exc.get('repo', ''):<30} "
-                      f"{exc['expires'].isoformat():<12} {days_remaining:<10} "
-                      f"{exc.get('reason', '')}")
+                print(
+                    f"{exc.get('rules', ''):<25} "
+                    f"{exc.get('repo', ''):<30} "
+                    f"{exc['expires'].isoformat():<12} {days_remaining:<10} "
+                    f"{exc.get('reason', '')}"
+                )
         if not found:
             print("No expired or expiring exceptions found.")
             return 0

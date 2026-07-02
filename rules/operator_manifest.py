@@ -7,12 +7,11 @@ belongs to, and which Go file defines it. This manifest is the source of
 truth for what images must be mirrorable in disconnected environments.
 """
 
-import re
 import json
+import re
 import subprocess
-from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple, Union
+from pathlib import Path
 
 try:
     from rules.common import ArchAnalyzerResult, Finding, RuleResult
@@ -21,7 +20,7 @@ except ModuleNotFoundError:
 
 RELATED_IMAGE_PATTERN = re.compile(r'"(RELATED_IMAGE_[A-Z0-9_]+)"')
 IMAGE_MAP_PATTERN = re.compile(r'"([^"]+)":\s*"(RELATED_IMAGE_[A-Z0-9_]+)"')
-KNOWN_ISSUES_PATTERN = re.compile(r'- image:\s*(RELATED_IMAGE_[A-Z0-9_]+)')
+KNOWN_ISSUES_PATTERN = re.compile(r"- image:\s*(RELATED_IMAGE_[A-Z0-9_]+)")
 
 OPERATOR_REPO = "https://github.com/opendatahub-io/opendatahub-operator.git"
 COMPONENTS_PATH = "internal/controller/components"
@@ -47,12 +46,10 @@ class Manifest:
     known_issues: list = field(default_factory=list)
 
 
-_MANIFEST_ENTRY_RE = re.compile(
-    r'\["([^"]*)"\]\s*=\s*"([^:]+):([^:]+):([^:]+):([^"]+)"'
-)
+_MANIFEST_ENTRY_RE = re.compile(r'\["([^"]*)"\]\s*=\s*"([^:]+):([^:]+):([^:]+):([^"]+)"')
 
 
-def parse_manifest_entries(operator_path: str) -> Tuple[Dict[str, List[str]], Dict[str, str]]:
+def parse_manifest_entries(operator_path: str) -> tuple[dict[str, list[str]], dict[str, str]]:
     """Parse get_all_manifests.sh → (repo→source_folders, repo→component_key).
 
     Parses ODH_COMPONENT_MANIFESTS, ODH_COMPONENT_CHARTS, and ODH_CCM_CHARTS arrays
@@ -70,8 +67,8 @@ def parse_manifest_entries(operator_path: str) -> Tuple[Dict[str, List[str]], Di
     except (OSError, UnicodeDecodeError):
         return {}, {}
 
-    source_folders: Dict[str, List[str]] = {}
-    component_keys: Dict[str, str] = {}
+    source_folders: dict[str, list[str]] = {}
+    component_keys: dict[str, str] = {}
 
     for match in _MANIFEST_ENTRY_RE.finditer(content):
         component_key = match.group(1)
@@ -87,24 +84,24 @@ def parse_manifest_entries(operator_path: str) -> Tuple[Dict[str, List[str]], Di
     return source_folders, component_keys
 
 
-
 _COMPONENT_DIR_MAP = {
-    'maas': 'modelsasservice',
+    "maas": "modelsasservice",
 }
 
-_SKIP_OVERLAY_COMPONENTS = {'operator'}
+_SKIP_OVERLAY_COMPONENTS = {"operator"}
 
 
 def _get_component_dir(component_key: str) -> str:
     """Map component key to operator component directory name."""
-    if '/' in component_key:
-        return component_key.split('/')[0]
+    if "/" in component_key:
+        return component_key.split("/")[0]
     return _COMPONENT_DIR_MAP.get(component_key, component_key)
 
 
 def parse_overlay_paths_from_arch_data(
-    arch_data: ArchAnalyzerResult, component_key: str,
-) -> List[str]:
+    arch_data: ArchAnalyzerResult,
+    component_key: str,
+) -> list[str]:
     """Extract deployed overlay paths from arch-analyzer kustomize_components.
 
     Reads ``overlay_paths`` from the operator's component-architecture.json
@@ -127,7 +124,7 @@ def parse_overlay_paths_from_arch_data(
         if not comp.overlay_paths:
             return []
 
-        result: List[str] = []
+        result: list[str] = []
         for path in comp.overlay_paths:
             path = path.strip("/")
             if path and path not in result:
@@ -143,12 +140,13 @@ def clone_operator(target_dir: Path) -> Path:
         return target_dir
     subprocess.run(
         ["git", "clone", "--depth", "1", OPERATOR_REPO, str(target_dir)],
-        capture_output=True, check=True,
+        capture_output=True,
+        check=True,
     )
     return target_dir
 
 
-def parse_component_images(component_dir: Path, component_name: str) -> List[ImageEntry]:
+def parse_component_images(component_dir: Path, component_name: str) -> list[ImageEntry]:
     """Parse a component's Go files for RELATED_IMAGE mappings."""
     entries = []
 
@@ -164,13 +162,15 @@ def parse_component_images(component_dir: Path, component_name: str) -> List[Ima
         for i, line in enumerate(lines, 1):
             map_match = IMAGE_MAP_PATTERN.search(line)
             if map_match:
-                entries.append(ImageEntry(
-                    env_var=map_match.group(2),
-                    component=component_name,
-                    manifest_key=map_match.group(1),
-                    source_file=str(go_file),
-                    source_line=i,
-                ))
+                entries.append(
+                    ImageEntry(
+                        env_var=map_match.group(2),
+                        component=component_name,
+                        manifest_key=map_match.group(1),
+                        source_file=str(go_file),
+                        source_line=i,
+                    )
+                )
                 continue
 
             for match in RELATED_IMAGE_PATTERN.finditer(line):
@@ -178,18 +178,20 @@ def parse_component_images(component_dir: Path, component_name: str) -> List[Ima
                 if env_var == "RELATED_IMAGE_*":
                     continue
                 if not any(e.env_var == env_var and e.component == component_name for e in entries):
-                    entries.append(ImageEntry(
-                        env_var=env_var,
-                        component=component_name,
-                        manifest_key="",
-                        source_file=str(go_file),
-                        source_line=i,
-                    ))
+                    entries.append(
+                        ImageEntry(
+                            env_var=env_var,
+                            component=component_name,
+                            manifest_key="",
+                            source_file=str(go_file),
+                            source_line=i,
+                        )
+                    )
 
     return entries
 
 
-def parse_known_issues(operator_root: Path) -> List[str]:
+def parse_known_issues(operator_root: Path) -> list[str]:
     """Parse component-params-env.yaml for known issues."""
     params_file = operator_root / "component-params-env.yaml"
     known_issues = []
@@ -221,7 +223,7 @@ def parse_known_issues(operator_root: Path) -> List[str]:
     return known_issues
 
 
-def build_manifest(operator_root: Union[str, Path]) -> Manifest:
+def build_manifest(operator_root: str | Path) -> Manifest:
     """Build the complete image manifest from the operator source."""
     root = Path(operator_root)
     manifest = Manifest()
@@ -243,7 +245,7 @@ def build_manifest(operator_root: Union[str, Path]) -> Manifest:
         if entries:
             manifest.components[component_name] = {
                 "image_count": len(entries),
-                "env_vars": sorted(set(e.env_var for e in entries)),
+                "env_vars": sorted({e.env_var for e in entries}),
             }
 
     # Also scan top-level files for RELATED_IMAGE refs not in components
@@ -266,13 +268,15 @@ def build_manifest(operator_root: Union[str, Path]) -> Manifest:
                 if env_var == "RELATED_IMAGE_*":
                     continue
                 if not any(e.env_var == env_var for e in manifest.images):
-                    manifest.images.append(ImageEntry(
-                        env_var=env_var,
-                        component="operator-core",
-                        manifest_key="",
-                        source_file=str(go_file),
-                        source_line=i,
-                    ))
+                    manifest.images.append(
+                        ImageEntry(
+                            env_var=env_var,
+                            component="operator-core",
+                            manifest_key="",
+                            source_file=str(go_file),
+                            source_line=i,
+                        )
+                    )
 
     manifest.known_issues = parse_known_issues(root)
 
@@ -282,25 +286,29 @@ def build_manifest(operator_root: Union[str, Path]) -> Manifest:
 def run(operator_path: str) -> RuleResult:
     """Run the manifest builder and return a RuleResult."""
     manifest = build_manifest(operator_path)
-    all_env_vars = sorted(set(e.env_var for e in manifest.images))
+    all_env_vars = sorted({e.env_var for e in manifest.images})
 
     result = RuleResult(rule="operator-manifest")
-    result.findings.append(Finding(
-        severity="info",
-        file="",
-        line=0,
-        image="",
-        message=f"Operator manifest: {len(all_env_vars)} unique RELATED_IMAGE env vars "
-                f"across {len(manifest.components)} components.",
-    ))
-    for issue in manifest.known_issues:
-        result.findings.append(Finding(
+    result.findings.append(
+        Finding(
             severity="info",
-            file="component-params-env.yaml",
+            file="",
             line=0,
-            image=issue,
-            message=f"Known issue in operator manifest: {issue}",
-        ))
+            image="",
+            message=f"Operator manifest: {len(all_env_vars)} unique RELATED_IMAGE env vars "
+            f"across {len(manifest.components)} components.",
+        )
+    )
+    for issue in manifest.known_issues:
+        result.findings.append(
+            Finding(
+                severity="info",
+                file="component-params-env.yaml",
+                line=0,
+                image=issue,
+                message=f"Known issue in operator manifest: {issue}",
+            )
+        )
     return result
 
 
@@ -312,12 +320,22 @@ if __name__ == "__main__":
         sys.exit(1)
     path = sys.argv[1]
     r = run(path)
-    print(json.dumps({
-        "rule": r.rule,
-        "passed": r.passed,
-        "findings": [
-            {"severity": f.severity, "file": f.file, "line": f.line,
-             "image": f.image, "message": f.message}
-            for f in r.findings
-        ],
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "rule": r.rule,
+                "passed": r.passed,
+                "findings": [
+                    {
+                        "severity": f.severity,
+                        "file": f.file,
+                        "line": f.line,
+                        "image": f.image,
+                        "message": f.message,
+                    }
+                    for f in r.findings
+                ],
+            },
+            indent=2,
+        )
+    )

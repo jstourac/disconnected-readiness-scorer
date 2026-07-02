@@ -7,58 +7,90 @@ from pathlib import Path
 
 try:
     from rules.common import (
-        Finding, RuleResult, get_tracked_files, is_file_in_production_scope,
-        SKIP_DIRS, production_scope_relative_dirs,
+        SKIP_DIRS,
+        Finding,
+        RuleResult,
+        get_tracked_files,
+        is_file_in_production_scope,
+        production_scope_relative_dirs,
     )
 except ModuleNotFoundError:
     from common import (
-        Finding, RuleResult, get_tracked_files, is_file_in_production_scope,
-        SKIP_DIRS, production_scope_relative_dirs,
+        SKIP_DIRS,
+        Finding,
+        RuleResult,
+        get_tracked_files,
+        is_file_in_production_scope,
+        production_scope_relative_dirs,
     )
 
 EGRESS_PATTERNS = {
     ".go": [
-        (re.compile(r'http\.(Get|Post|Head|Do|NewRequest)\s*\('), "http.{method} call", False),
-        (re.compile(r'net\.Dial\s*\('), "net.Dial call", False),
-        (re.compile(r'http\.DefaultClient'), "http.DefaultClient usage", False),
+        (re.compile(r"http\.(Get|Post|Head|Do|NewRequest)\s*\("), "http.{method} call", False),
+        (re.compile(r"net\.Dial\s*\("), "net.Dial call", False),
+        (re.compile(r"http\.DefaultClient"), "http.DefaultClient usage", False),
         (re.compile(r'exec\.Command\s*\(\s*"git"'), "git subprocess call", False),
     ],
     ".py": [
-        (re.compile(r'requests\.(get|post|put|delete|head|patch)\s*\('), "requests.{method} call", False),
-        (re.compile(r'urllib\.request\.(urlopen|Request)\s*\('), "urllib.request call", False),
-        (re.compile(r'httpx\.(get|post|put|delete|AsyncClient)\s*\('), "httpx call", False),
-        (re.compile(r'aiohttp\.ClientSession\s*\('), "aiohttp session", False),
-        (re.compile(r'subprocess.*(?:curl|wget)'), "curl/wget via subprocess", False),
-        (re.compile(r'subprocess.*(?:hf|huggingface.cli).*download'), "HuggingFace download via subprocess", True),
-        (re.compile(r'\bfrom_pretrained\s*\('), "HuggingFace from_pretrained() model download", True),
-        (re.compile(r'\bsnapshot_download\s*\('), "HuggingFace snapshot_download() model download", True),
-        (re.compile(r'\bload_dataset\s*\('), "HuggingFace load_dataset() download", True),
-        (re.compile(r'\bSentenceTransformer\s*\('), "SentenceTransformer model load", True),
-        (re.compile(r'\btorch\.hub\.load\s*\('), "torch.hub.load() model download", True),
+        (
+            re.compile(r"requests\.(get|post|put|delete|head|patch)\s*\("),
+            "requests.{method} call",
+            False,
+        ),
+        (re.compile(r"urllib\.request\.(urlopen|Request)\s*\("), "urllib.request call", False),
+        (re.compile(r"httpx\.(get|post|put|delete|AsyncClient)\s*\("), "httpx call", False),
+        (re.compile(r"aiohttp\.ClientSession\s*\("), "aiohttp session", False),
+        (re.compile(r"subprocess.*(?:curl|wget)"), "curl/wget via subprocess", False),
+        (
+            re.compile(r"subprocess.*(?:hf|huggingface.cli).*download"),
+            "HuggingFace download via subprocess",
+            True,
+        ),
+        (
+            re.compile(r"\bfrom_pretrained\s*\("),
+            "HuggingFace from_pretrained() model download",
+            True,
+        ),
+        (
+            re.compile(r"\bsnapshot_download\s*\("),
+            "HuggingFace snapshot_download() model download",
+            True,
+        ),
+        (re.compile(r"\bload_dataset\s*\("), "HuggingFace load_dataset() download", True),
+        (re.compile(r"\bSentenceTransformer\s*\("), "SentenceTransformer model load", True),
+        (re.compile(r"\btorch\.hub\.load\s*\("), "torch.hub.load() model download", True),
     ],
     ".ts": [
-        (re.compile(r'fetch\s*\('), "fetch() call", False),
-        (re.compile(r'axios\.(get|post|put|delete|request)\s*\('), "axios.{method} call", False),
-        (re.compile(r'http\.request\s*\('), "http.request call", False),
+        (re.compile(r"fetch\s*\("), "fetch() call", False),
+        (re.compile(r"axios\.(get|post|put|delete|request)\s*\("), "axios.{method} call", False),
+        (re.compile(r"http\.request\s*\("), "http.request call", False),
     ],
     ".tsx": [
-        (re.compile(r'fetch\s*\('), "fetch() call", False),
-        (re.compile(r'axios\.(get|post|put|delete|request)\s*\('), "axios.{method} call", False),
+        (re.compile(r"fetch\s*\("), "fetch() call", False),
+        (re.compile(r"axios\.(get|post|put|delete|request)\s*\("), "axios.{method} call", False),
     ],
     ".sh": [
-        (re.compile(r'\bcurl\s+'), "curl invocation", False),
-        (re.compile(r'\bwget\s+'), "wget invocation", False),
-        (re.compile(r'\b(?:hf|huggingface-cli)\s+download\b'), "HuggingFace model download", True),
+        (re.compile(r"\bcurl\s+"), "curl invocation", False),
+        (re.compile(r"\bwget\s+"), "wget invocation", False),
+        (re.compile(r"\b(?:hf|huggingface-cli)\s+download\b"), "HuggingFace model download", True),
     ],
     ".yaml": [
-        (re.compile(r'\bcurl\s+'), "curl invocation in YAML manifest", False),
-        (re.compile(r'\bwget\s+'), "wget invocation in YAML manifest", False),
-        (re.compile(r'\b(?:hf|huggingface-cli)\s+download\b'), "HuggingFace model download in YAML manifest", True),
+        (re.compile(r"\bcurl\s+"), "curl invocation in YAML manifest", False),
+        (re.compile(r"\bwget\s+"), "wget invocation in YAML manifest", False),
+        (
+            re.compile(r"\b(?:hf|huggingface-cli)\s+download\b"),
+            "HuggingFace model download in YAML manifest",
+            True,
+        ),
     ],
     ".yml": [
-        (re.compile(r'\bcurl\s+'), "curl invocation in YAML manifest", False),
-        (re.compile(r'\bwget\s+'), "wget invocation in YAML manifest", False),
-        (re.compile(r'\b(?:hf|huggingface-cli)\s+download\b'), "HuggingFace model download in YAML manifest", True),
+        (re.compile(r"\bcurl\s+"), "curl invocation in YAML manifest", False),
+        (re.compile(r"\bwget\s+"), "wget invocation in YAML manifest", False),
+        (
+            re.compile(r"\b(?:hf|huggingface-cli)\s+download\b"),
+            "HuggingFace model download in YAML manifest",
+            True,
+        ),
     ],
 }
 
@@ -78,8 +110,17 @@ _CLUSTER_SVC_URL = re.compile(r'https?://[a-z0-9][a-z0-9-]*(:[0-9]+)?(/|[\'"\s,)
 
 def has_configurable_url(line: str) -> bool:
     """Check if the URL in this line appears configurable (env var, config, etc)."""
-    indicators = ["os.Getenv", "os.environ", "config.", "settings.", "env.",
-                   "process.env", "viper.", "${", "getenv"]
+    indicators = [
+        "os.Getenv",
+        "os.environ",
+        "config.",
+        "settings.",
+        "env.",
+        "process.env",
+        "viper.",
+        "${",
+        "getenv",
+    ]
     return any(ind in line for ind in indicators)
 
 
@@ -90,15 +131,18 @@ def run(repo_root: str, production_scope=None, **_kwargs) -> RuleResult:
         return _run_impl(root, result, production_scope)
     except Exception as exc:
         import traceback
+
         print(traceback.format_exc(), file=sys.stderr)
         result.passed = False
-        result.findings.append(Finding(
-            severity="blocker",
-            file="",
-            line=0,
-            image="",
-            message=f"Rule crashed: {type(exc).__name__}: {exc}",
-        ))
+        result.findings.append(
+            Finding(
+                severity="blocker",
+                file="",
+                line=0,
+                image="",
+                message=f"Rule crashed: {type(exc).__name__}: {exc}",
+            )
+        )
         return result
 
 
@@ -137,7 +181,7 @@ def _run_impl(root: Path, result: RuleResult, production_scope) -> RuleResult:
         patterns = EGRESS_PATTERNS[suffix]
         for i, line in enumerate(lines, 1):
             stripped = line.strip()
-            if stripped.startswith("//") or stripped.startswith("#"):
+            if stripped.startswith(("//", "#")):
                 continue
 
             for pattern, desc, always_network in patterns:
@@ -150,7 +194,7 @@ def _run_impl(root: Path, result: RuleResult, production_scope) -> RuleResult:
                     msg = f"{desc} — requires network access, will fail disconnected."
                 else:
                     configurable = has_configurable_url(line)
-                    hardcoded_url = bool(re.search(r'https?://', line))
+                    hardcoded_url = bool(re.search(r"https?://", line))
 
                     internal_url = hardcoded_url and (
                         any(p in line for p in INTERNAL_URL_PATTERNS)
@@ -171,34 +215,42 @@ def _run_impl(root: Path, result: RuleResult, production_scope) -> RuleResult:
                         msg = f"{desc} — no hardcoded URL, likely internal/relative API call."
                     else:
                         severity = "blocker"
-                        msg = f"{desc} — endpoint may not be reachable in disconnected environments."
+                        msg = (
+                            f"{desc} — endpoint may not be reachable in disconnected environments."
+                        )
 
                 if severity == "blocker":
                     result.passed = False
 
-                result.findings.append(Finding(
-                    severity=severity,
-                    file=str(filepath.relative_to(root)),
-                    line=i,
-                    image="",
-                    message=msg,
-                ))
+                result.findings.append(
+                    Finding(
+                        severity=severity,
+                        file=str(filepath.relative_to(root)),
+                        line=i,
+                        image="",
+                        message=msg,
+                    )
+                )
 
     return result
 
 
 if __name__ == "__main__":
-    import sys
     import json
+    import sys
 
     repo = sys.argv[1] if len(sys.argv) > 1 else "."
     r = run(repo)
-    print(json.dumps({
-        "rule": r.rule,
-        "passed": r.passed,
-        "findings": [
-            {"severity": f.severity, "file": f.file, "line": f.line,
-             "message": f.message}
-            for f in r.findings
-        ],
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "rule": r.rule,
+                "passed": r.passed,
+                "findings": [
+                    {"severity": f.severity, "file": f.file, "line": f.line, "message": f.message}
+                    for f in r.findings
+                ],
+            },
+            indent=2,
+        )
+    )

@@ -6,9 +6,14 @@ import pytest
 
 from rules.common import ArchAnalyzerResult, RuleResult
 from rules.operator_manifest import (
-    clone_operator, parse_component_images, parse_known_issues,
-    build_manifest, run, COMPONENTS_PATH,
-    parse_overlay_paths_from_arch_data, parse_manifest_entries,
+    COMPONENTS_PATH,
+    build_manifest,
+    clone_operator,
+    parse_component_images,
+    parse_known_issues,
+    parse_manifest_entries,
+    parse_overlay_paths_from_arch_data,
+    run,
 )
 
 
@@ -35,6 +40,7 @@ class TestCloneOperator:
     @patch("rules.operator_manifest.subprocess.run")
     def test_clone_failure_raises(self, mock_run, tmp_path):
         import subprocess
+
         mock_run.side_effect = subprocess.CalledProcessError(1, "git")
         target = tmp_path / "operator"
         with pytest.raises(subprocess.CalledProcessError):
@@ -85,7 +91,7 @@ class TestParseComponentImages:
 
     def test_unreadable_file_skipped(self, tmp_path):
         f = tmp_path / "bad.go"
-        f.write_bytes(b'\x80\x81\x82' * 100)
+        f.write_bytes(b"\x80\x81\x82" * 100)
         entries = parse_component_images(tmp_path, "comp")
         assert entries == []
 
@@ -114,9 +120,7 @@ class TestParseKnownIssues:
     def test_parses_known_issues(self, tmp_path):
         f = tmp_path / "component-params-env.yaml"
         f.write_text(
-            "# known_issues:\n"
-            "- image: RELATED_IMAGE_BROKEN\n"
-            "- image: RELATED_IMAGE_STALE\n"
+            "# known_issues:\n- image: RELATED_IMAGE_BROKEN\n- image: RELATED_IMAGE_STALE\n"
         )
         known = parse_known_issues(tmp_path)
         assert "RELATED_IMAGE_BROKEN" in known
@@ -136,7 +140,7 @@ class TestParseKnownIssues:
 
     def test_unreadable_file(self, tmp_path):
         f = tmp_path / "component-params-env.yaml"
-        f.write_bytes(b'\x80\x81\x82' * 100)
+        f.write_bytes(b"\x80\x81\x82" * 100)
         result = parse_known_issues(tmp_path)
         assert result == []
 
@@ -249,44 +253,61 @@ class TestRun:
         info_msgs = [f.message for f in result.findings if f.severity == "info"]
         assert any("1 unique RELATED_IMAGE" in m for m in info_msgs)
 
+
 class TestParseOverlayPathsFromArchData:
     def test_basic_overlays(self):
-        arch_data = ArchAnalyzerResult.from_dict({
-            "kustomize_components": [{
-                "support_file": "internal/controller/components/kserve/kserve_support.go",
-                "overlay_paths": ["overlays/odh"],
-            }]
-        })
+        arch_data = ArchAnalyzerResult.from_dict(
+            {
+                "kustomize_components": [
+                    {
+                        "support_file": "internal/controller/components/kserve/kserve_support.go",
+                        "overlay_paths": ["overlays/odh"],
+                    }
+                ]
+            }
+        )
         result = parse_overlay_paths_from_arch_data(arch_data, "kserve")
         assert result == ["overlays/odh"]
 
     def test_multiple_overlays(self):
-        arch_data = ArchAnalyzerResult.from_dict({
-            "kustomize_components": [{
-                "support_file": "internal/controller/components/dashboard/dashboard_support.go",
-                "overlay_paths": ["overlays/rhoai", "overlays/odh"],
-            }]
-        })
+        arch_data = ArchAnalyzerResult.from_dict(
+            {
+                "kustomize_components": [
+                    {
+                        "support_file": "internal/controller/components/dashboard/dashboard_support.go",
+                        "overlay_paths": ["overlays/rhoai", "overlays/odh"],
+                    }
+                ]
+            }
+        )
         result = parse_overlay_paths_from_arch_data(arch_data, "dashboard")
         assert result == ["overlays/rhoai", "overlays/odh"]
 
     def test_component_dir_map(self):
-        arch_data = ArchAnalyzerResult.from_dict({
-            "kustomize_components": [{
-                "support_file": "internal/controller/components/modelsasservice/maas_support.go",
-                "overlay_paths": ["overlays/odh"],
-            }]
-        })
+        arch_data = ArchAnalyzerResult.from_dict(
+            {
+                "kustomize_components": [
+                    {
+                        "support_file": "internal/controller/components/modelsasservice/maas_support.go",
+                        "overlay_paths": ["overlays/odh"],
+                    }
+                ]
+            }
+        )
         result = parse_overlay_paths_from_arch_data(arch_data, "maas")
         assert result == ["overlays/odh"]
 
     def test_component_key_with_slash(self):
-        arch_data = ArchAnalyzerResult.from_dict({
-            "kustomize_components": [{
-                "support_file": "internal/controller/components/workbenches/wb_support.go",
-                "overlay_paths": ["overlays/odh"],
-            }]
-        })
+        arch_data = ArchAnalyzerResult.from_dict(
+            {
+                "kustomize_components": [
+                    {
+                        "support_file": "internal/controller/components/workbenches/wb_support.go",
+                        "overlay_paths": ["overlays/odh"],
+                    }
+                ]
+            }
+        )
         result = parse_overlay_paths_from_arch_data(arch_data, "workbenches/kf-notebook-controller")
         assert result == ["overlays/odh"]
 
@@ -299,12 +320,16 @@ class TestParseOverlayPathsFromArchData:
         assert result == []
 
     def test_leading_slash_stripped(self):
-        arch_data = ArchAnalyzerResult.from_dict({
-            "kustomize_components": [{
-                "support_file": "internal/controller/components/kserve/kserve_support.go",
-                "overlay_paths": ["/overlays/odh/"],
-            }]
-        })
+        arch_data = ArchAnalyzerResult.from_dict(
+            {
+                "kustomize_components": [
+                    {
+                        "support_file": "internal/controller/components/kserve/kserve_support.go",
+                        "overlay_paths": ["/overlays/odh/"],
+                    }
+                ]
+            }
+        )
         result = parse_overlay_paths_from_arch_data(arch_data, "kserve")
         assert result == ["overlays/odh"]
 
@@ -312,13 +337,13 @@ class TestParseOverlayPathsFromArchData:
 class TestParseRepoComponentKey:
     def test_parses_manifest_entries(self, tmp_path):
         script = tmp_path / "get_all_manifests.sh"
-        script.write_text('''
+        script.write_text("""
 declare -A ODH_COMPONENT_MANIFESTS=(
     ["dashboard"]="opendatahub-io:odh-dashboard:main:manifests"
     ["workbenches/kf-notebook-controller"]="opendatahub-io:kubeflow:main:config"
     ["kserve"]="opendatahub-io:kserve:release-v0.17:config"
 )
-''')
+""")
         _, result = parse_manifest_entries(str(tmp_path))
         assert result["odh-dashboard"] == "dashboard"
         assert result["kubeflow"] == "workbenches/kf-notebook-controller"
@@ -332,7 +357,7 @@ declare -A ODH_COMPONENT_MANIFESTS=(
 class TestParseManifestEntries:
     def test_parses_all_array_types(self, tmp_path):
         script = tmp_path / "get_all_manifests.sh"
-        script.write_text('''
+        script.write_text("""
 declare -A ODH_COMPONENT_MANIFESTS=(
     ["kserve"]="opendatahub-io:kserve:release-v0.17:config"
 )
@@ -342,7 +367,7 @@ declare -A ODH_COMPONENT_CHARTS=(
 declare -A ODH_CCM_CHARTS=(
     ["ccm/model-registry"]="opendatahub-io:model-registry-operator:main:config"
 )
-''')
+""")
         source_folders, component_keys = parse_manifest_entries(str(tmp_path))
         assert source_folders["kserve"] == ["config"]
         assert source_folders["trustyai-service-operator"] == ["chart"]
@@ -356,14 +381,12 @@ declare -A ODH_CCM_CHARTS=(
         assert folders == {}
         assert keys == {}
 
-
     def test_known_issues_become_info(self, tmp_path):
         (tmp_path / COMPONENTS_PATH).mkdir(parents=True)
         (tmp_path / "component-params-env.yaml").write_text(
             "# known_issues:\n- image: RELATED_IMAGE_BROKEN\n"
         )
         result = run(str(tmp_path))
-        issue_findings = [f for f in result.findings
-                          if f.image == "RELATED_IMAGE_BROKEN"]
+        issue_findings = [f for f in result.findings if f.image == "RELATED_IMAGE_BROKEN"]
         assert len(issue_findings) == 1
         assert issue_findings[0].severity == "info"

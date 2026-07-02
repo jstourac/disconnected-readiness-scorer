@@ -3,31 +3,42 @@
 
 import re
 from pathlib import Path
-from typing import List
 
 try:
     from rules.common import (
-        Finding, RuleResult, get_tracked_files, is_file_in_production_scope,
-        SKIP_DIRS, find_params_env_dirs, build_overlay_file_map,
-        is_non_production_overlay_file, production_scope_relative_dirs,
         NON_REGISTRY_DOMAINS,
+        SKIP_DIRS,
+        Finding,
+        RuleResult,
+        build_overlay_file_map,
+        find_params_env_dirs,
+        get_tracked_files,
+        is_file_in_production_scope,
+        is_non_production_overlay_file,
+        production_scope_relative_dirs,
     )
 except ModuleNotFoundError:
     from common import (
-        Finding, RuleResult, get_tracked_files, is_file_in_production_scope,
-        SKIP_DIRS, find_params_env_dirs, build_overlay_file_map,
-        is_non_production_overlay_file, production_scope_relative_dirs,
         NON_REGISTRY_DOMAINS,
+        SKIP_DIRS,
+        Finding,
+        RuleResult,
+        build_overlay_file_map,
+        find_params_env_dirs,
+        get_tracked_files,
+        is_file_in_production_scope,
+        is_non_production_overlay_file,
+        production_scope_relative_dirs,
     )
 
 IMAGE_REF_PATTERN = re.compile(
-    r'(https?://|oci://)?'
-    r'((?:[\w.\-]+(?:\.[\w.\-]+)+(?::\d+)?/)?[\w.\-]+(?:/[\w.\-]+)+)'
-    r'([:@][\w.\-:]+)?'
+    r"(https?://|oci://)?"
+    r"((?:[\w.\-]+(?:\.[\w.\-]+)+(?::\d+)?/)?[\w.\-]+(?:/[\w.\-]+)+)"
+    r"([:@][\w.\-:]+)?"
 )
 
 K8S_UNQUALIFIED_IMAGE = re.compile(
-    r'''(?:^|[\s\-])image:\s*['"]?([a-zA-Z][\w.\-]+):([\w.\-]+)['"]?\s*$'''
+    r"""(?:^|[\s\-])image:\s*['"]?([a-zA-Z][\w.\-]+):([\w.\-]+)['"]?\s*$"""
 )
 
 YAML_EXTENSIONS = {".yaml", ".yml"}
@@ -37,7 +48,9 @@ SOURCE_EXTENSIONS = {".go", ".py", ".ts", ".tsx", ".sh"}
 _NAME_CONTAINS = ["Dockerfile"]
 
 _SKIP_FILENAMES = {
-    "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
     "package.json",
 }
 
@@ -52,7 +65,6 @@ def is_source_code(filepath: Path) -> bool:
     return filepath.suffix in SOURCE_EXTENSIONS
 
 
-
 _MAX_FILE_SIZE = 512 * 1024  # 512 KB
 
 
@@ -62,20 +74,22 @@ def scan_file(
     production_scope=None,
     overlay_file_map: dict[str, set[Path]] | None = None,
     non_image_prefixes: list[str] | None = None,
-) -> List[Finding]:
+) -> list[Finding]:
     findings = []
     if overlay_file_map is None:
         overlay_file_map = {}
     try:
         file_size = filepath.stat().st_size
         if file_size > _MAX_FILE_SIZE:
-            findings.append(Finding(
-                severity="info",
-                file=str(filepath.relative_to(root)),
-                line=0,
-                image="",
-                message=f"Skipped large file ({file_size // 1024}KB > {_MAX_FILE_SIZE // 1024}KB limit).",
-            ))
+            findings.append(
+                Finding(
+                    severity="info",
+                    file=str(filepath.relative_to(root)),
+                    line=0,
+                    image="",
+                    message=f"Skipped large file ({file_size // 1024}KB > {_MAX_FILE_SIZE // 1024}KB limit).",
+                )
+            )
             return findings
         lines = filepath.read_text().splitlines()
     except (OSError, UnicodeDecodeError):
@@ -118,15 +132,21 @@ def scan_file(
                 image_str = f"oci://{repo_part}"
                 if ref_part:
                     image_str += ref_part
-                    base_msg = (f"OCI URI `{image_str}` uses tag '{ref_part}' instead of digest. "
-                                f"Must use @sha256: digest for disconnected mirroring.")
+                    base_msg = (
+                        f"OCI URI `{image_str}` uses tag '{ref_part}' instead of digest. "
+                        f"Must use @sha256: digest for disconnected mirroring."
+                    )
                 else:
-                    base_msg = (f"OCI URI `{image_str}` has no digest pin. "
-                                f"Must use @sha256: digest for disconnected mirroring.")
+                    base_msg = (
+                        f"OCI URI `{image_str}` has no digest pin. "
+                        f"Must use @sha256: digest for disconnected mirroring."
+                    )
             else:
                 image_str = f"{repo_part}{ref_part}"
-                base_msg = (f"Image `{image_str}` uses tag '{ref_part}' instead of digest. "
-                            f"Tags cannot be reliably mirrored.")
+                base_msg = (
+                    f"Image `{image_str}` uses tag '{ref_part}' instead of digest. "
+                    f"Tags cannot be reliably mirrored."
+                )
 
             relative = str(filepath.relative_to(root))
             if is_excluded_file(filepath):
@@ -141,19 +161,22 @@ def scan_file(
                 else:
                     msg = f"{base_msg} Manifest file not managed by params.env."
 
-            if severity in ("blocker", "warning"):
-                if is_non_production_overlay_file(filepath, production_scope, overlay_file_map):
-                    severity = "info"
-                    msg += " [non-production overlay]"
+            if severity in ("blocker", "warning") and is_non_production_overlay_file(
+                filepath, production_scope, overlay_file_map
+            ):
+                severity = "info"
+                msg += " [non-production overlay]"
 
             found_on_line.add(i)
-            findings.append(Finding(
-                severity=severity,
-                file=relative,
-                line=i,
-                image=image_str,
-                message=msg,
-            ))
+            findings.append(
+                Finding(
+                    severity=severity,
+                    file=relative,
+                    line=i,
+                    image=image_str,
+                    message=msg,
+                )
+            )
 
         if is_yaml and i not in found_on_line:
             m = K8S_UNQUALIFIED_IMAGE.search(line.strip())
@@ -163,8 +186,10 @@ def scan_file(
                     continue
                 image_str = f"{name}:{tag}"
                 relative = str(filepath.relative_to(root))
-                base_msg = (f"Unqualified image `{image_str}` in k8s manifest "
-                            f"uses tag ':{tag}' instead of digest.")
+                base_msg = (
+                    f"Unqualified image `{image_str}` in k8s manifest "
+                    f"uses tag ':{tag}' instead of digest."
+                )
 
                 if is_excluded_file(filepath):
                     severity = "info"
@@ -173,23 +198,32 @@ def scan_file(
                     severity = "blocker"
                     msg = f"{base_msg} Manifest file not managed by params.env."
 
-                if severity == "blocker":
-                    if is_non_production_overlay_file(filepath, production_scope, overlay_file_map):
-                        severity = "info"
-                        msg += " [non-production overlay]"
+                if severity == "blocker" and is_non_production_overlay_file(
+                    filepath, production_scope, overlay_file_map
+                ):
+                    severity = "info"
+                    msg += " [non-production overlay]"
 
-                findings.append(Finding(
-                    severity=severity,
-                    file=relative,
-                    line=i,
-                    image=image_str,
-                    message=msg,
-                ))
+                findings.append(
+                    Finding(
+                        severity=severity,
+                        file=relative,
+                        line=i,
+                        image=image_str,
+                        message=msg,
+                    )
+                )
 
     return findings
 
 
-def run(repo_root: str, production_scope=None, arch_data=None, non_image_prefixes: list[str] | None = None, **_kwargs) -> RuleResult:
+def run(
+    repo_root: str,
+    production_scope=None,
+    arch_data=None,
+    non_image_prefixes: list[str] | None = None,
+    **_kwargs,
+) -> RuleResult:
     root = Path(repo_root)
     result = RuleResult(rule="no-image-tags")
     skip_dirs = SKIP_DIRS
@@ -220,7 +254,9 @@ def run(repo_root: str, production_scope=None, arch_data=None, non_image_prefixe
     for filepath in root.rglob("*"):
         if filepath.name in _SKIP_FILENAMES:
             continue
-        if filepath.suffix not in extensions and not any(s in filepath.name for s in _NAME_CONTAINS):
+        if filepath.suffix not in extensions and not any(
+            s in filepath.name for s in _NAME_CONTAINS
+        ):
             continue
         if any(d in filepath.parts for d in skip_dirs):
             continue
@@ -233,7 +269,13 @@ def run(repo_root: str, production_scope=None, arch_data=None, non_image_prefixe
             continue
 
         result.files_checked.append(str(filepath.relative_to(root)))
-        for finding in scan_file(filepath, root, production_scope=production_scope, overlay_file_map=overlay_file_map, non_image_prefixes=non_image_prefixes):
+        for finding in scan_file(
+            filepath,
+            root,
+            production_scope=production_scope,
+            overlay_file_map=overlay_file_map,
+            non_image_prefixes=non_image_prefixes,
+        ):
             result.findings.append(finding)
             if finding.severity == "blocker":
                 result.passed = False
@@ -242,17 +284,27 @@ def run(repo_root: str, production_scope=None, arch_data=None, non_image_prefixe
 
 
 if __name__ == "__main__":
-    import sys
     import json
+    import sys
 
     repo = sys.argv[1] if len(sys.argv) > 1 else "."
     r = run(repo)
-    print(json.dumps({
-        "rule": r.rule,
-        "passed": r.passed,
-        "findings": [
-            {"severity": f.severity, "file": f.file, "line": f.line,
-             "image": f.image, "message": f.message}
-            for f in r.findings
-        ],
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "rule": r.rule,
+                "passed": r.passed,
+                "findings": [
+                    {
+                        "severity": f.severity,
+                        "file": f.file,
+                        "line": f.line,
+                        "image": f.image,
+                        "message": f.message,
+                    }
+                    for f in r.findings
+                ],
+            },
+            indent=2,
+        )
+    )

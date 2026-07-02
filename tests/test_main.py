@@ -18,22 +18,21 @@ from main import (
     _build_false_positive_section,
     _find_expired_exceptions,
     _find_expiring_exceptions,
-    _normalize_rules,
     _get_repo_name,
+    _normalize_rules,
     _render_template_simple,
     _run_arch_analyzer,
     _validate_config_schema,
-    _EXPIRY_WARNING_DAYS,
     adapt_manifest_result,
     apply_exceptions,
     compute_score,
     load_central_config,
+    main,
     parse_args,
     print_summary,
     render_json,
     render_markdown,
     resolve_rules,
-    main,
 )
 from rules.common import Finding, RuleResult
 
@@ -63,6 +62,7 @@ def _make_import_side_effect(fake_mod):
 
 
 # --- parse_args ---
+
 
 class TestParseArgs:
     def test_defaults(self):
@@ -101,18 +101,22 @@ class TestParseArgs:
 
 # --- resolve_rules ---
 
+
 class TestResolveRules:
     def test_all_returns_defaults(self):
         from main import DEFAULT_RULES
+
         result = resolve_rules("all")
         assert result == list(DEFAULT_RULES)
 
     def test_empty_returns_defaults(self):
         from main import DEFAULT_RULES
+
         assert resolve_rules("") == list(DEFAULT_RULES)
 
     def test_none_returns_defaults(self):
         from main import DEFAULT_RULES
+
         assert resolve_rules(None) == list(DEFAULT_RULES)
 
     def test_specific_rules(self):
@@ -131,6 +135,7 @@ class TestResolveRules:
 
 # --- compute_score ---
 
+
 class TestComputeScore:
     def test_ready(self):
         results = [RuleResult(rule="a"), RuleResult(rule="b")]
@@ -141,8 +146,7 @@ class TestComputeScore:
         assert compute_score([r]) == "READY"
 
     def test_not_ready(self):
-        r = RuleResult(rule="a", passed=False,
-                       findings=[Finding("blocker", "f", 1, "img", "bad")])
+        r = RuleResult(rule="a", passed=False, findings=[Finding("blocker", "f", 1, "img", "bad")])
         assert compute_score([r]) == "NOT READY"
 
     def test_not_ready_with_mixed_rules(self):
@@ -156,10 +160,12 @@ class TestComputeScore:
 
 # --- adapt_manifest_result ---
 
+
 @dataclass
 class FakeImageEntry:
     env_var: str
     image: str = ""
+
 
 @dataclass
 class FakeManifest:
@@ -204,15 +210,24 @@ class TestAdaptManifestResult:
 
 # --- print_summary ---
 
+
 class TestPrintSummary:
     def test_output_to_stderr(self, capsys):
         results = [
-            RuleResult(rule="r1", passed=True, findings=[
-                Finding("info", "", 0, "", "ok"),
-            ]),
-            RuleResult(rule="r2", passed=False, findings=[
-                Finding("blocker", "f.go", 1, "img", "bad"),
-            ]),
+            RuleResult(
+                rule="r1",
+                passed=True,
+                findings=[
+                    Finding("info", "", 0, "", "ok"),
+                ],
+            ),
+            RuleResult(
+                rule="r2",
+                passed=False,
+                findings=[
+                    Finding("blocker", "f.go", 1, "img", "bad"),
+                ],
+            ),
         ]
         print_summary("NOT READY", results)
         err = capsys.readouterr().err
@@ -222,9 +237,12 @@ class TestPrintSummary:
 
     def test_pass_tag(self, capsys):
         results = [
-            RuleResult(rule="r1", findings=[
-                Finding("info", "x.py", 1, "", "informational"),
-            ]),
+            RuleResult(
+                rule="r1",
+                findings=[
+                    Finding("info", "x.py", 1, "", "informational"),
+                ],
+            ),
         ]
         print_summary("READY", results)
         err = capsys.readouterr().err
@@ -234,13 +252,18 @@ class TestPrintSummary:
 
 # --- render_json ---
 
+
 class TestRenderJson:
     def test_structure(self):
         results = [
-            RuleResult(rule="a", passed=True, findings=[
-                Finding("blocker", "f.go", 10, "img", "msg"),
-                Finding("info", "g.go", 20, "", "imsg"),
-            ]),
+            RuleResult(
+                rule="a",
+                passed=True,
+                findings=[
+                    Finding("blocker", "f.go", 10, "img", "msg"),
+                    Finding("info", "g.go", 20, "", "imsg"),
+                ],
+            ),
         ]
         raw = render_json("NOT READY", results, "my-repo")
         data = json.loads(raw)
@@ -281,6 +304,7 @@ class TestRenderJson:
 
 # --- _render_template_simple ---
 
+
 class TestRenderTemplateSimple:
     def test_variable_substitution(self):
         result = _render_template_simple("Hello {{ name }}", {"name": "world"})
@@ -311,9 +335,12 @@ class TestRenderTemplateSimple:
 
 # --- render_markdown ---
 
+
 class TestRenderMarkdown:
     def test_fallback_on_missing_template(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("main.Path", lambda *a: tmp_path / "nope" if len(a) == 1 else type(tmp_path)(*a))
+        monkeypatch.setattr(
+            "main.Path", lambda *a: tmp_path / "nope" if len(a) == 1 else type(tmp_path)(*a)
+        )
         result = render_markdown("READY", [], "repo")
         assert "READY" in result
 
@@ -334,6 +361,7 @@ class TestRenderMarkdown:
 
 # --- main (integration-level) ---
 
+
 class TestMain:
     @patch("main.compute_production_scope", return_value=None)
     def test_all_pass_returns_0(self, _mock_scope):
@@ -341,8 +369,10 @@ class TestMain:
         fake_mod.run.return_value = RuleResult(rule="test-rule", passed=True)
         fake_mod.detect_image_pattern.return_value = "static_csv"
 
-        with patch("main._run_arch_analyzer", return_value=None), \
-             patch("importlib.import_module", side_effect=_make_import_side_effect(fake_mod)):
+        with (
+            patch("main._run_arch_analyzer", return_value=None),
+            patch("importlib.import_module", side_effect=_make_import_side_effect(fake_mod)),
+        ):
             exit_code = main([".", "--rules", "csv,tags,egress,python", "--report", "json"])
         assert exit_code == 0
 
@@ -350,13 +380,16 @@ class TestMain:
     def test_blocker_returns_1(self, _mock_scope):
         fake_mod = MagicMock()
         fake_mod.run.return_value = RuleResult(
-            rule="test-rule", passed=False,
+            rule="test-rule",
+            passed=False,
             findings=[Finding("blocker", "f.go", 1, "img", "fail")],
         )
         fake_mod.detect_image_pattern.return_value = "static_csv"
 
-        with patch("main._run_arch_analyzer", return_value=None), \
-             patch("importlib.import_module", side_effect=_make_import_side_effect(fake_mod)):
+        with (
+            patch("main._run_arch_analyzer", return_value=None),
+            patch("importlib.import_module", side_effect=_make_import_side_effect(fake_mod)),
+        ):
             exit_code = main([".", "--rules", "csv", "--report", "json"])
         assert exit_code == 1
 
@@ -367,8 +400,10 @@ class TestMain:
         fake_mod.detect_image_pattern.return_value = "static_csv"
 
         out_file = tmp_path / "report.json"
-        with patch("main._run_arch_analyzer", return_value=None), \
-             patch("importlib.import_module", side_effect=_make_import_side_effect(fake_mod)):
+        with (
+            patch("main._run_arch_analyzer", return_value=None),
+            patch("importlib.import_module", side_effect=_make_import_side_effect(fake_mod)),
+        ):
             exit_code = main([".", "--rules", "csv", "--report", "json", "-o", str(out_file)])
         assert exit_code == 0
         content = out_file.read_text()
@@ -380,10 +415,14 @@ class TestMain:
         fake_manifest = FakeManifest(images=[], components=[], known_issues=[])
         fake_mod = MagicMock()
 
-        with patch("main._run_arch_analyzer", return_value=None), \
-             patch("main.load_manifest", return_value=(fake_manifest, set())) as mock_load, \
-             patch("main.adapt_manifest_result", return_value=RuleResult(rule="operator-manifest")) as mock_adapt, \
-             patch("importlib.import_module", side_effect=_make_import_side_effect(fake_mod)):
+        with (
+            patch("main._run_arch_analyzer", return_value=None),
+            patch("main.load_manifest", return_value=(fake_manifest, set())) as mock_load,
+            patch(
+                "main.adapt_manifest_result", return_value=RuleResult(rule="operator-manifest")
+            ) as mock_adapt,
+            patch("importlib.import_module", side_effect=_make_import_side_effect(fake_mod)),
+        ):
             exit_code = main([".", "--rules", "manifest", "--report", "json"])
             assert exit_code == 0
             mock_load.assert_called_once()
@@ -397,16 +436,18 @@ class TestMain:
 
         fake_manifest = FakeManifest(images=[], components=[], known_issues=[])
 
-        with patch("main._run_arch_analyzer", return_value=None), \
-             patch("main.load_manifest", return_value=(fake_manifest, set())) as mock_load, \
-             patch("importlib.import_module", side_effect=_make_import_side_effect(fake_mod)):
+        with (
+            patch("main._run_arch_analyzer", return_value=None),
+            patch("main.load_manifest", return_value=(fake_manifest, set())) as mock_load,
+            patch("importlib.import_module", side_effect=_make_import_side_effect(fake_mod)),
+        ):
             exit_code = main([".", "--rules", "csv", "--report", "json"])
             assert exit_code == 0
             mock_load.assert_called_once()
 
 
-
 # --- integration tests with arch-analyzer fixtures ---
+
 
 class TestMainWithArchFixtures:
     """Integration tests that pass real arch-analyzer fixture data through the pipeline."""
@@ -420,8 +461,10 @@ class TestMainWithArchFixtures:
         fake_mod.run.return_value = RuleResult(rule="test-rule", passed=True)
         fake_mod.detect_image_pattern.return_value = "static_csv"
 
-        with patch("main._run_arch_analyzer", return_value=fixture), \
-             patch("importlib.import_module", side_effect=_make_import_side_effect(fake_mod)):
+        with (
+            patch("main._run_arch_analyzer", return_value=fixture),
+            patch("importlib.import_module", side_effect=_make_import_side_effect(fake_mod)),
+        ):
             exit_code = main([".", "--rules", "tags", "--report", "json"])
 
         assert exit_code == 0
@@ -438,8 +481,10 @@ class TestMainWithArchFixtures:
         fake_mod.run.return_value = RuleResult(rule="test-rule", passed=True)
         fake_mod.detect_image_pattern.return_value = "static_csv"
 
-        with patch("main._run_arch_analyzer", return_value=fixture), \
-             patch("importlib.import_module", side_effect=_make_import_side_effect(fake_mod)):
+        with (
+            patch("main._run_arch_analyzer", return_value=fixture),
+            patch("importlib.import_module", side_effect=_make_import_side_effect(fake_mod)),
+        ):
             main([".", "--rules", "tags", "--report", "json"])
 
         scope_call = mock_scope.call_args
@@ -447,6 +492,7 @@ class TestMainWithArchFixtures:
 
 
 # --- load_exceptions ---
+
 
 class TestLoadExceptions:
     def test_load_from_file(self, tmp_path):
@@ -479,32 +525,20 @@ class TestLoadExceptions:
     def test_missing_reason_raises(self, tmp_path):
         exc_file = tmp_path / "exceptions.yaml"
         exc_file.write_text(
-            "exceptions:\n"
-            "  - rules: no-image-tags\n"
-            "    paths:\n"
-            '      - "deploy.yaml"\n'
+            'exceptions:\n  - rules: no-image-tags\n    paths:\n      - "deploy.yaml"\n'
         )
         with pytest.raises(ValueError, match="reason"):
             load_exceptions(str(exc_file))
 
     def test_missing_rules_raises(self, tmp_path):
         exc_file = tmp_path / "exceptions.yaml"
-        exc_file.write_text(
-            "exceptions:\n"
-            "  - paths:\n"
-            '      - "deploy.yaml"\n'
-            '    reason: "test"\n'
-        )
+        exc_file.write_text('exceptions:\n  - paths:\n      - "deploy.yaml"\n    reason: "test"\n')
         with pytest.raises(ValueError, match="rules"):
             load_exceptions(str(exc_file))
 
     def test_missing_scope_filter_raises(self, tmp_path):
         exc_file = tmp_path / "exceptions.yaml"
-        exc_file.write_text(
-            "exceptions:\n"
-            '  - rules: "*"\n'
-            '    reason: "no scope filter"\n'
-        )
+        exc_file.write_text('exceptions:\n  - rules: "*"\n    reason: "no scope filter"\n')
         with pytest.raises(ValueError, match="must include at least one of"):
             load_exceptions(str(exc_file))
 
@@ -543,8 +577,8 @@ class TestLoadExceptions:
         assert result[0]["paths"] == ["install/*"]
 
 
-
 # --- _get_repo_name ---
+
 
 class TestGetRepoName:
     def test_https_remote(self, tmp_path):
@@ -565,6 +599,7 @@ class TestGetRepoName:
 
     def test_no_remote_falls_back_to_basename(self, tmp_path):
         from subprocess import CalledProcessError
+
         subprocess_run = patch(
             "main.subprocess.check_output",
             side_effect=CalledProcessError(1, "git"),
@@ -575,12 +610,16 @@ class TestGetRepoName:
 
 # --- apply_exceptions ---
 
+
 class TestApplyExceptions:
     def test_matching_rule_downgrades_blocker(self):
-        results = [RuleResult(
-            rule="no-image-tags", passed=False,
-            findings=[Finding("blocker", "deploy.yaml", 10, "img:latest", "bad tag")],
-        )]
+        results = [
+            RuleResult(
+                rule="no-image-tags",
+                passed=False,
+                findings=[Finding("blocker", "deploy.yaml", 10, "img:latest", "bad tag")],
+            )
+        ]
         exceptions = [{"rules": "no-image-tags", "reason": "known false positive"}]
         apply_exceptions(results, exceptions, "my-repo")
         assert results[0].findings[0].severity == "info"
@@ -588,32 +627,40 @@ class TestApplyExceptions:
         assert results[0].passed is True
 
     def test_info_findings_not_targeted(self):
-        results = [RuleResult(
-            rule="no-runtime-egress",
-            findings=[Finding("info", "main.go", 5, "", "configurable URL")],
-        )]
+        results = [
+            RuleResult(
+                rule="no-runtime-egress",
+                findings=[Finding("info", "main.go", 5, "", "configurable URL")],
+            )
+        ]
         exceptions = [{"rules": "no-runtime-egress", "reason": "internal only"}]
         apply_exceptions(results, exceptions, "repo")
         assert results[0].findings[0].severity == "info"
 
     def test_non_matching_rule_keeps_severity(self):
-        results = [RuleResult(
-            rule="no-image-tags", passed=False,
-            findings=[Finding("blocker", "f.yaml", 1, "img", "bad")],
-        )]
+        results = [
+            RuleResult(
+                rule="no-image-tags",
+                passed=False,
+                findings=[Finding("blocker", "f.yaml", 1, "img", "bad")],
+            )
+        ]
         exceptions = [{"rules": "no-runtime-egress", "reason": "wrong rule"}]
         apply_exceptions(results, exceptions, "repo")
         assert results[0].findings[0].severity == "blocker"
         assert results[0].passed is False
 
     def test_path_glob_matching(self):
-        results = [RuleResult(
-            rule="no-image-tags", passed=False,
-            findings=[
-                Finding("blocker", "src/main.go", 1, "img", "bad"),
-                Finding("blocker", "deploy/app.yaml", 2, "img2", "also bad"),
-            ],
-        )]
+        results = [
+            RuleResult(
+                rule="no-image-tags",
+                passed=False,
+                findings=[
+                    Finding("blocker", "src/main.go", 1, "img", "bad"),
+                    Finding("blocker", "deploy/app.yaml", 2, "img2", "also bad"),
+                ],
+            )
+        ]
         exceptions = [{"rules": "no-image-tags", "paths": ["src/*.go"], "reason": "source ok"}]
         apply_exceptions(results, exceptions, "repo")
         assert results[0].findings[0].severity == "info"
@@ -621,14 +668,17 @@ class TestApplyExceptions:
         assert results[0].passed is False
 
     def test_doublestar_suffix_matches_bare_dir(self):
-        results = [RuleResult(
-            rule="no-image-tags", passed=False,
-            findings=[
-                Finding("blocker", "config/scorecard", 1, "img", "bad"),
-                Finding("blocker", "config/scorecard/foo.yaml", 2, "img2", "bad"),
-                Finding("blocker", "config/manager/deploy.yaml", 3, "img3", "bad"),
-            ],
-        )]
+        results = [
+            RuleResult(
+                rule="no-image-tags",
+                passed=False,
+                findings=[
+                    Finding("blocker", "config/scorecard", 1, "img", "bad"),
+                    Finding("blocker", "config/scorecard/foo.yaml", 2, "img2", "bad"),
+                    Finding("blocker", "config/manager/deploy.yaml", 3, "img3", "bad"),
+                ],
+            )
+        ]
         exceptions = [{"rules": "*", "paths": ["**/config/scorecard/**"], "reason": "test"}]
         apply_exceptions(results, exceptions, "repo")
         assert results[0].findings[0].severity == "info"
@@ -636,49 +686,64 @@ class TestApplyExceptions:
         assert results[0].findings[2].severity == "blocker"
 
     def test_repo_filter_matches(self):
-        results = [RuleResult(
-            rule="no-runtime-egress", passed=False,
-            findings=[Finding("blocker", "f.go", 1, "", "egress")],
-        )]
+        results = [
+            RuleResult(
+                rule="no-runtime-egress",
+                passed=False,
+                findings=[Finding("blocker", "f.go", 1, "", "egress")],
+            )
+        ]
         exceptions = [{"rules": "no-runtime-egress", "repo": "org/my-repo", "reason": "ok"}]
         apply_exceptions(results, exceptions, "org/my-repo")
         assert results[0].findings[0].severity == "info"
 
     def test_repo_filter_no_match(self):
-        results = [RuleResult(
-            rule="no-runtime-egress", passed=False,
-            findings=[Finding("blocker", "f.go", 1, "", "egress")],
-        )]
+        results = [
+            RuleResult(
+                rule="no-runtime-egress",
+                passed=False,
+                findings=[Finding("blocker", "f.go", 1, "", "egress")],
+            )
+        ]
         exceptions = [{"rules": "no-runtime-egress", "repo": "other-repo", "reason": "ok"}]
         apply_exceptions(results, exceptions, "my-repo")
         assert results[0].findings[0].severity == "blocker"
 
     def test_repo_filter_short_exception_matches_full_repo_name(self):
-        results = [RuleResult(
-            rule="no-runtime-egress", passed=False,
-            findings=[Finding("blocker", "f.go", 1, "", "egress")],
-        )]
+        results = [
+            RuleResult(
+                rule="no-runtime-egress",
+                passed=False,
+                findings=[Finding("blocker", "f.go", 1, "", "egress")],
+            )
+        ]
         exceptions = [{"rules": "no-runtime-egress", "repo": "my-repo", "reason": "ok"}]
         apply_exceptions(results, exceptions, "org/my-repo")
         assert results[0].findings[0].severity == "info"
 
     def test_repo_filter_different_org_same_name_no_match(self):
-        results = [RuleResult(
-            rule="no-runtime-egress", passed=False,
-            findings=[Finding("blocker", "f.go", 1, "", "egress")],
-        )]
+        results = [
+            RuleResult(
+                rule="no-runtime-egress",
+                passed=False,
+                findings=[Finding("blocker", "f.go", 1, "", "egress")],
+            )
+        ]
         exceptions = [{"rules": "no-runtime-egress", "repo": "org-a/foo", "reason": "ok"}]
         apply_exceptions(results, exceptions, "org-b/foo")
         assert results[0].findings[0].severity == "blocker"
 
     def test_passed_recomputed_after_downgrade(self):
-        results = [RuleResult(
-            rule="r", passed=False,
-            findings=[
-                Finding("blocker", "a.go", 1, "", "b1"),
-                Finding("blocker", "b.go", 2, "", "b2"),
-            ],
-        )]
+        results = [
+            RuleResult(
+                rule="r",
+                passed=False,
+                findings=[
+                    Finding("blocker", "a.go", 1, "", "b1"),
+                    Finding("blocker", "b.go", 2, "", "b2"),
+                ],
+            )
+        ]
         exceptions = [
             {"rules": "r", "paths": ["a.go"], "reason": "ok"},
             {"rules": "r", "paths": ["b.go"], "reason": "ok"},
@@ -687,10 +752,13 @@ class TestApplyExceptions:
         assert results[0].passed is True
 
     def test_no_exceptions_noop(self):
-        results = [RuleResult(
-            rule="r", passed=False,
-            findings=[Finding("blocker", "f", 1, "", "msg")],
-        )]
+        results = [
+            RuleResult(
+                rule="r",
+                passed=False,
+                findings=[Finding("blocker", "f", 1, "", "msg")],
+            )
+        ]
         apply_exceptions(results, [], "repo")
         assert results[0].findings[0].severity == "blocker"
         assert results[0].passed is False
@@ -698,19 +766,23 @@ class TestApplyExceptions:
     def test_list_of_rules(self):
         results = [
             RuleResult(
-                rule="no-image-tags", passed=False,
+                rule="no-image-tags",
+                passed=False,
                 findings=[Finding("blocker", "install/v1/k.yaml", 1, "img", "bad")],
             ),
             RuleResult(
-                rule="no-runtime-egress", passed=False,
+                rule="no-runtime-egress",
+                passed=False,
                 findings=[Finding("blocker", "install/v1/s.sh", 5, "", "curl")],
             ),
         ]
-        exceptions = [{
-            "rules": ["no-image-tags", "no-runtime-egress"],
-            "paths": ["install/*"],
-            "reason": "historical snapshots",
-        }]
+        exceptions = [
+            {
+                "rules": ["no-image-tags", "no-runtime-egress"],
+                "paths": ["install/*"],
+                "reason": "historical snapshots",
+            }
+        ]
         apply_exceptions(results, exceptions, "repo")
         assert results[0].findings[0].severity == "info"
         assert results[0].passed is True
@@ -720,87 +792,131 @@ class TestApplyExceptions:
     def test_list_of_rules_partial_match(self):
         results = [
             RuleResult(
-                rule="no-image-tags", passed=False,
+                rule="no-image-tags",
+                passed=False,
                 findings=[Finding("blocker", "f.yaml", 1, "img", "bad")],
             ),
             RuleResult(
-                rule="no-runtime-egress", passed=False,
+                rule="no-runtime-egress",
+                passed=False,
                 findings=[Finding("blocker", "f.go", 5, "", "curl")],
             ),
         ]
-        exceptions = [{
-            "rules": ["no-image-tags"],
-            "reason": "only tags",
-        }]
+        exceptions = [
+            {
+                "rules": ["no-image-tags"],
+                "reason": "only tags",
+            }
+        ]
         apply_exceptions(results, exceptions, "repo")
         assert results[0].findings[0].severity == "info"
         assert results[1].findings[0].severity == "blocker"
 
     def test_message_glob_matching(self):
-        results = [RuleResult(
-            rule="r", passed=False,
-            findings=[Finding("blocker", "f.go", 1, "", "http.Get with hardcoded external URL")],
-        )]
+        results = [
+            RuleResult(
+                rule="r",
+                passed=False,
+                findings=[
+                    Finding("blocker", "f.go", 1, "", "http.Get with hardcoded external URL")
+                ],
+            )
+        ]
         exceptions = [{"rules": "r", "message": "*hardcoded*", "reason": "ok"}]
         apply_exceptions(results, exceptions, "repo")
         assert results[0].findings[0].severity == "info"
 
     def test_message_exact_no_glob_does_not_substring_match(self):
-        results = [RuleResult(
-            rule="r", passed=False,
-            findings=[Finding("blocker", "f.go", 1, "", "http.Get with hardcoded external URL")],
-        )]
+        results = [
+            RuleResult(
+                rule="r",
+                passed=False,
+                findings=[
+                    Finding("blocker", "f.go", 1, "", "http.Get with hardcoded external URL")
+                ],
+            )
+        ]
         exceptions = [{"rules": "r", "message": "http", "reason": "ok"}]
         apply_exceptions(results, exceptions, "repo")
         assert results[0].findings[0].severity == "blocker"
 
     def test_images_list_matches(self):
-        results = [RuleResult(
-            rule="r", passed=False,
-            findings=[Finding("blocker", "f.yaml", 1, "repo/REPLACE_IMAGE:tag", "tagged image")],
-        )]
+        results = [
+            RuleResult(
+                rule="r",
+                passed=False,
+                findings=[
+                    Finding("blocker", "f.yaml", 1, "repo/REPLACE_IMAGE:tag", "tagged image")
+                ],
+            )
+        ]
         exceptions = [{"rules": "*", "images": ["*/REPLACE_IMAGE:*"], "reason": "placeholder"}]
         apply_exceptions(results, exceptions, "repo")
         assert results[0].findings[0].severity == "info"
         assert results[0].passed is True
 
     def test_images_list_no_match_stays_blocker(self):
-        results = [RuleResult(
-            rule="r", passed=False,
-            findings=[Finding("blocker", "f.yaml", 1, "quay.io/org/real:tag", "tagged image")],
-        )]
+        results = [
+            RuleResult(
+                rule="r",
+                passed=False,
+                findings=[Finding("blocker", "f.yaml", 1, "quay.io/org/real:tag", "tagged image")],
+            )
+        ]
         exceptions = [{"rules": "*", "images": ["*/REPLACE_IMAGE:*"], "reason": "placeholder"}]
         apply_exceptions(results, exceptions, "repo")
         assert results[0].findings[0].severity == "blocker"
 
     def test_images_list_any_pattern_matches(self):
-        results = [RuleResult(
-            rule="r", passed=False,
-            findings=[Finding("blocker", "f.yaml", 1, "quay.io/org/app:replace", "tagged image")],
-        )]
-        exceptions = [{"rules": "*", "images": ["*/REPLACE_IMAGE:*", "*:replace"], "reason": "placeholder"}]
+        results = [
+            RuleResult(
+                rule="r",
+                passed=False,
+                findings=[
+                    Finding("blocker", "f.yaml", 1, "quay.io/org/app:replace", "tagged image")
+                ],
+            )
+        ]
+        exceptions = [
+            {"rules": "*", "images": ["*/REPLACE_IMAGE:*", "*:replace"], "reason": "placeholder"}
+        ]
         apply_exceptions(results, exceptions, "repo")
         assert results[0].findings[0].severity == "info"
 
     def test_images_and_paths_both_must_match(self):
-        results = [RuleResult(
-            rule="r", passed=False,
-            findings=[Finding("blocker", "prod/f.yaml", 1, "repo/REPLACE_IMAGE:tag", "tagged")],
-        )]
-        exceptions = [{"rules": "*", "images": ["*/REPLACE_IMAGE:*"], "paths": ["test/**"], "reason": "placeholder"}]
+        results = [
+            RuleResult(
+                rule="r",
+                passed=False,
+                findings=[Finding("blocker", "prod/f.yaml", 1, "repo/REPLACE_IMAGE:tag", "tagged")],
+            )
+        ]
+        exceptions = [
+            {
+                "rules": "*",
+                "images": ["*/REPLACE_IMAGE:*"],
+                "paths": ["test/**"],
+                "reason": "placeholder",
+            }
+        ]
         apply_exceptions(results, exceptions, "repo")
         assert results[0].findings[0].severity == "blocker"
 
 
 # --- report sorting ---
 
+
 class TestReportSorting:
     def test_markdown_blockers_section(self):
         results = [
-            RuleResult(rule="r1", passed=False, findings=[
-                Finding("info", "i.go", 1, "", "info msg"),
-                Finding("blocker", "b.go", 2, "img", "block msg"),
-            ]),
+            RuleResult(
+                rule="r1",
+                passed=False,
+                findings=[
+                    Finding("info", "i.go", 1, "", "info msg"),
+                    Finding("blocker", "b.go", 2, "img", "block msg"),
+                ],
+            ),
         ]
         output = render_markdown("NOT READY", results, "repo")
         assert "## Blockers" in output
@@ -809,10 +925,13 @@ class TestReportSorting:
 
     def test_json_findings_sorted_by_severity(self):
         results = [
-            RuleResult(rule="r", findings=[
-                Finding("info", "i.go", 1, "", "info"),
-                Finding("blocker", "b.go", 2, "", "blocker"),
-            ]),
+            RuleResult(
+                rule="r",
+                findings=[
+                    Finding("info", "i.go", 1, "", "info"),
+                    Finding("blocker", "b.go", 2, "", "blocker"),
+                ],
+            ),
         ]
         data = json.loads(render_json("NOT READY", results, "repo"))
         severities = [f["severity"] for f in data["rules"][0]["findings"]]
@@ -833,6 +952,7 @@ class TestReportSorting:
 
 # --- parse_args exceptions flag ---
 
+
 class TestParseArgsExceptions:
     def test_exceptions_flag(self, tmp_path):
         exc_path = tmp_path / "exc.yaml"
@@ -850,11 +970,13 @@ class TestParseArgsExceptions:
 class TestLoadCentralConfig:
     def test_missing_file_returns_defaults(self, tmp_path):
         from main import load_central_config
+
         cfg = load_central_config(str(tmp_path / "nope.yaml"))
         assert cfg["exceptions"] == []
 
     def test_present_file_has_all_keys(self, tmp_path):
         from main import load_central_config
+
         f = tmp_path / "config.yaml"
         f.write_text("exceptions: []\n")
         cfg = load_central_config(str(f))
@@ -864,17 +986,15 @@ class TestLoadCentralConfig:
 
     def test_loads_docker_contexts(self, tmp_path):
         from main import load_central_config
+
         f = tmp_path / "config.yaml"
-        f.write_text(
-            "docker_contexts:\n"
-            "  myrepo:\n"
-            "    Dockerfile: src/\n"
-        )
+        f.write_text("docker_contexts:\n  myrepo:\n    Dockerfile: src/\n")
         cfg = load_central_config(str(f))
         assert cfg["docker_contexts"] == {"myrepo": {"Dockerfile": "src/"}}
 
     def test_loads_known_non_image_prefixes(self, tmp_path):
         from main import load_central_config
+
         f = tmp_path / "config.yaml"
         f.write_text("known_non_image_prefixes:\n  - ghcr.io/foo/bar\n")
         cfg = load_central_config(str(f))
@@ -882,12 +1002,9 @@ class TestLoadCentralConfig:
 
     def test_loads_params_env_filenames(self, tmp_path):
         from main import load_central_config
+
         f = tmp_path / "config.yaml"
-        f.write_text(
-            "params_env_filenames:\n"
-            "  myrepo:\n"
-            "    - params-latest.env\n"
-        )
+        f.write_text("params_env_filenames:\n  myrepo:\n    - params-latest.env\n")
         cfg = load_central_config(str(f))
         assert cfg["params_env_filenames"] == {"myrepo": ["params-latest.env"]}
 
@@ -895,6 +1012,7 @@ class TestLoadCentralConfig:
 class TestArchAnalyzerError:
     def test_is_exception(self):
         from main import ArchAnalyzerError
+
         err = ArchAnalyzerError("binary missing")
         assert isinstance(err, Exception)
         assert "binary missing" in str(err)
@@ -911,6 +1029,7 @@ class TestValidateConfigSchema:
     def test_missing_schema_file_raises(self, monkeypatch):
         import main
         from rules.common import ConfigError
+
         monkeypatch.setattr(main, "_SCHEMA_PATH", Path("/nonexistent/schema.json"))
         with pytest.raises(ConfigError, match="Cannot read config schema"):
             _validate_config_schema({"anything": True}, "test.yaml")
@@ -930,6 +1049,7 @@ class TestRunArchAnalyzer:
 
     def test_subprocess_failure_raises(self, tmp_path, monkeypatch):
         import subprocess
+
         bin_path = tmp_path / "fake-bin"
         bin_path.touch()
         monkeypatch.setattr(
@@ -941,6 +1061,7 @@ class TestRunArchAnalyzer:
 
     def test_timeout_raises(self, tmp_path, monkeypatch):
         import subprocess
+
         bin_path = tmp_path / "fake-bin"
         bin_path.touch()
         monkeypatch.setattr(
@@ -971,10 +1092,13 @@ class TestRunArchAnalyzer:
 
 class TestApplyExceptionsHits:
     def test_returns_hit_counts(self):
-        results = [RuleResult(
-            rule="r", passed=False,
-            findings=[Finding("blocker", "f.go", 1, "", "msg")],
-        )]
+        results = [
+            RuleResult(
+                rule="r",
+                passed=False,
+                findings=[Finding("blocker", "f.go", 1, "", "msg")],
+            )
+        ]
         exceptions = [
             {"rules": "r", "reason": "ok"},
             {"rules": "other", "reason": "unused"},
@@ -988,20 +1112,24 @@ class TestApplyExceptionsHits:
         assert hits == []
 
     def test_wildcard_rule_counts(self):
-        results = [RuleResult(
-            rule="r", passed=False,
-            findings=[
-                Finding("blocker", "a.go", 1, "", "m1"),
-                Finding("blocker", "b.go", 2, "", "m2"),
-                Finding("blocker", "c.go", 3, "", "m3"),
-            ],
-        )]
+        results = [
+            RuleResult(
+                rule="r",
+                passed=False,
+                findings=[
+                    Finding("blocker", "a.go", 1, "", "m1"),
+                    Finding("blocker", "b.go", 2, "", "m2"),
+                    Finding("blocker", "c.go", 3, "", "m3"),
+                ],
+            )
+        ]
         exceptions = [{"rules": "*", "reason": "all ok"}]
         hits = apply_exceptions(results, exceptions, "repo")
         assert hits == [3]
 
 
 # --- rules field validation ---
+
 
 def _write_exception(tmp_path, rules_value):
     """Write a minimal exception config and return the path string."""
@@ -1012,22 +1140,21 @@ def _write_exception(tmp_path, rules_value):
     else:
         rules_block = f"rules: {rules_value}"
     exc_file.write_text(
-        f"exceptions:\n"
-        f"  - {rules_block}\n"
-        f'    paths:\n'
-        f'      - "**/*.yaml"\n'
-        f'    reason: "ok"\n'
+        f'exceptions:\n  - {rules_block}\n    paths:\n      - "**/*.yaml"\n    reason: "ok"\n'
     )
     return str(exc_file)
 
 
 class TestRulesFieldValidation:
-
     def test_valid_rules_accepted(self, tmp_path):
         cases = [
-            ("single-rule",  "no-image-tags",                          "no-image-tags"),
-            ("wildcard",     '"*"',                                    "*"),
-            ("list",         ["no-image-tags", "no-runtime-egress"],   ["no-image-tags", "no-runtime-egress"]),
+            ("single-rule", "no-image-tags", "no-image-tags"),
+            ("wildcard", '"*"', "*"),
+            (
+                "list",
+                ["no-image-tags", "no-runtime-egress"],
+                ["no-image-tags", "no-runtime-egress"],
+            ),
         ]
         for name, rules_value, expected in cases:
             d = tmp_path / name
@@ -1037,15 +1164,15 @@ class TestRulesFieldValidation:
 
     def test_invalid_rules_rejected(self, tmp_path):
         cases = [
-            ("invalid-string",       "nonexistent",                          "unknown rule name 'nonexistent'"),
-            ("invalid-in-list",      ["no-image-tags", "bogus"],             "unknown rule name 'bogus'"),
-            ("wildcard-in-list",     ['"*"'],                                r"wildcard.*not allowed inside a list"),
-            ("wildcard-mixed",       ["no-image-tags", '"*"'],               r"wildcard.*not allowed inside a list"),
-            ("empty-string",         '""',                                   "schema validation error"),
-            ("empty-list",           "[]",                                   "schema validation error"),
-            ("integer",              "42",                                   "schema validation error"),
-            ("non-string-item",      [42],                                   "schema validation error"),
-            ("duplicates",           ["no-image-tags", "no-image-tags"],     "schema validation error"),
+            ("invalid-string", "nonexistent", "unknown rule name 'nonexistent'"),
+            ("invalid-in-list", ["no-image-tags", "bogus"], "unknown rule name 'bogus'"),
+            ("wildcard-in-list", ['"*"'], r"wildcard.*not allowed inside a list"),
+            ("wildcard-mixed", ["no-image-tags", '"*"'], r"wildcard.*not allowed inside a list"),
+            ("empty-string", '""', "schema validation error"),
+            ("empty-list", "[]", "schema validation error"),
+            ("integer", "42", "schema validation error"),
+            ("non-string-item", [42], "schema validation error"),
+            ("duplicates", ["no-image-tags", "no-image-tags"], "schema validation error"),
         ]
         for name, rules_value, error_pattern in cases:
             d = tmp_path / name
@@ -1055,6 +1182,7 @@ class TestRulesFieldValidation:
 
 
 # --- normalize rules ---
+
 
 class TestNormalizeRules:
     def test_string_returns_frozenset(self):
@@ -1084,6 +1212,7 @@ class TestNormalizeRules:
 
 
 # --- exception rendering ---
+
 
 class TestBuildExceptionsSection:
     def test_string_rules_value(self):
@@ -1161,30 +1290,46 @@ class TestRenderJsonExceptions:
 
 # --- exception snippets and false positive section ---
 
+
 class TestExceptionSnippets:
     def test_builds_snippets_from_blockers_only(self):
-        results = [RuleResult(rule="no-image-tags", findings=[
-            Finding("blocker", "deploy.yaml", 10, "img:latest", "mutable tag"),
-            Finding("info", "src/main.go", 5, "img:v1", "source tag"),
-            Finding("info", "test/t.go", 1, "img:dev", "test file"),
-        ])]
+        results = [
+            RuleResult(
+                rule="no-image-tags",
+                findings=[
+                    Finding("blocker", "deploy.yaml", 10, "img:latest", "mutable tag"),
+                    Finding("info", "src/main.go", 5, "img:v1", "source tag"),
+                    Finding("info", "test/t.go", 1, "img:dev", "test file"),
+                ],
+            )
+        ]
         snippets = _build_exception_snippets(results)
         assert len(snippets) == 1
         assert snippets[0]["rules"] == "no-image-tags"
         assert snippets[0]["file"] == "deploy.yaml"
 
     def test_snippets_exclude_empty_fields(self):
-        results = [RuleResult(rule="no-runtime-egress", findings=[
-            Finding("blocker", "client.go", 5, "", "egress call"),
-        ])]
+        results = [
+            RuleResult(
+                rule="no-runtime-egress",
+                findings=[
+                    Finding("blocker", "client.go", 5, "", "egress call"),
+                ],
+            )
+        ]
         snippets = _build_exception_snippets(results)
         assert "image" not in snippets[0]
         assert snippets[0]["message"] == "egress call"
 
     def test_empty_when_no_blockers(self):
-        results = [RuleResult(rule="r", findings=[
-            Finding("info", "f", 1, "", "ok"),
-        ])]
+        results = [
+            RuleResult(
+                rule="r",
+                findings=[
+                    Finding("info", "f", 1, "", "ok"),
+                ],
+            )
+        ]
         assert _build_exception_snippets(results) == []
 
     def test_false_positive_section_empty_when_no_snippets(self):
@@ -1206,33 +1351,55 @@ class TestExceptionSnippets:
         assert "1 blocker finding" in section
 
     def test_markdown_report_includes_false_positive_section(self):
-        results = [RuleResult(rule="no-image-tags", passed=False, findings=[
-            Finding("blocker", "deploy.yaml", 10, "img:latest", "mutable tag"),
-        ])]
+        results = [
+            RuleResult(
+                rule="no-image-tags",
+                passed=False,
+                findings=[
+                    Finding("blocker", "deploy.yaml", 10, "img:latest", "mutable tag"),
+                ],
+            )
+        ]
         output = render_markdown("NOT READY", results, "test-repo")
         assert "Reporting False Positives" in output
         assert "central config file" in output
 
     def test_markdown_report_omits_section_when_no_blockers(self):
-        results = [RuleResult(rule="r", findings=[
-            Finding("info", "f", 1, "", "ok"),
-        ])]
+        results = [
+            RuleResult(
+                rule="r",
+                findings=[
+                    Finding("info", "f", 1, "", "ok"),
+                ],
+            )
+        ]
         output = render_markdown("READY", results, "repo")
         assert "Reporting False Positives" not in output
 
     def test_json_report_includes_false_positive_help(self):
-        results = [RuleResult(rule="no-image-tags", passed=False, findings=[
-            Finding("blocker", "deploy.yaml", 10, "img:latest", "mutable tag"),
-        ])]
+        results = [
+            RuleResult(
+                rule="no-image-tags",
+                passed=False,
+                findings=[
+                    Finding("blocker", "deploy.yaml", 10, "img:latest", "mutable tag"),
+                ],
+            )
+        ]
         data = json.loads(render_json("NOT READY", results, "test-repo"))
         assert "false_positive_help" in data
         assert "exception_snippets" in data["false_positive_help"]
         assert len(data["false_positive_help"]["exception_snippets"]) == 1
 
     def test_json_report_omits_help_when_no_blockers(self):
-        results = [RuleResult(rule="r", findings=[
-            Finding("info", "f", 1, "", "ok"),
-        ])]
+        results = [
+            RuleResult(
+                rule="r",
+                findings=[
+                    Finding("info", "f", 1, "", "ok"),
+                ],
+            )
+        ]
         data = json.loads(render_json("READY", results, "repo"))
         assert "false_positive_help" not in data
 
@@ -1240,6 +1407,7 @@ class TestExceptionSnippets:
 # ---------------------------------------------------------------------------
 # Exception expiration — validation
 # ---------------------------------------------------------------------------
+
 
 class TestValidateExceptionsExpires:
     def test_valid_expires_string(self, tmp_path):
@@ -1273,33 +1441,21 @@ class TestValidateExceptionsExpires:
     def test_invalid_expires_format_raises(self, tmp_path):
         f = tmp_path / "config.yaml"
         f.write_text(
-            "exceptions:\n"
-            "  - rules: no-image-tags\n"
-            '    reason: "temp"\n'
-            '    expires: "not-a-date"\n'
+            'exceptions:\n  - rules: no-image-tags\n    reason: "temp"\n    expires: "not-a-date"\n'
         )
         with pytest.raises(ValueError, match=r"invalid.*expires.*date"):
             load_exceptions(str(f))
 
     def test_expires_wrong_type_raises(self, tmp_path):
         f = tmp_path / "config.yaml"
-        f.write_text(
-            "exceptions:\n"
-            "  - rules: no-image-tags\n"
-            '    reason: "temp"\n'
-            "    expires: 42\n"
-        )
+        f.write_text('exceptions:\n  - rules: no-image-tags\n    reason: "temp"\n    expires: 42\n')
         with pytest.raises(ValueError, match="expires"):
             load_exceptions(str(f))
 
     def test_no_expires_field_passes(self, tmp_path):
         f = tmp_path / "config.yaml"
         f.write_text(
-            "exceptions:\n"
-            "  - rules: '*'\n"
-            '    reason: "permanent"\n'
-            "    paths:\n"
-            '      - "**/*"\n'
+            'exceptions:\n  - rules: \'*\'\n    reason: "permanent"\n    paths:\n      - "**/*"\n'
         )
         result = load_exceptions(str(f))
         assert "expires" not in result[0]
@@ -1309,71 +1465,90 @@ class TestValidateExceptionsExpires:
 # Exception expiration — enforcement
 # ---------------------------------------------------------------------------
 
+
 class TestApplyExceptionsExpiration:
     def test_expired_exception_not_applied(self):
-        results = [RuleResult(
-            rule="no-image-tags", passed=False,
-            findings=[Finding("blocker", "f.yaml", 1, "img:latest", "bad tag")],
-        )]
-        exceptions = [{"rules": "no-image-tags", "reason": "temp",
-                        "expires": date(2020, 1, 1)}]
+        results = [
+            RuleResult(
+                rule="no-image-tags",
+                passed=False,
+                findings=[Finding("blocker", "f.yaml", 1, "img:latest", "bad tag")],
+            )
+        ]
+        exceptions = [{"rules": "no-image-tags", "reason": "temp", "expires": date(2020, 1, 1)}]
         apply_exceptions(results, exceptions, "repo")
         assert results[0].findings[0].severity == "blocker"
         assert results[0].passed is False
 
     def test_future_exception_still_applied(self):
-        results = [RuleResult(
-            rule="no-image-tags", passed=False,
-            findings=[Finding("blocker", "f.yaml", 1, "img:latest", "bad tag")],
-        )]
-        exceptions = [{"rules": "no-image-tags", "reason": "temp",
-                        "expires": date(2099, 12, 31)}]
+        results = [
+            RuleResult(
+                rule="no-image-tags",
+                passed=False,
+                findings=[Finding("blocker", "f.yaml", 1, "img:latest", "bad tag")],
+            )
+        ]
+        exceptions = [{"rules": "no-image-tags", "reason": "temp", "expires": date(2099, 12, 31)}]
         apply_exceptions(results, exceptions, "repo")
         assert results[0].findings[0].severity == "info"
 
     def test_expires_today_still_honored(self):
-        results = [RuleResult(
-            rule="r", passed=False,
-            findings=[Finding("blocker", "f", 1, "", "msg")],
-        )]
+        results = [
+            RuleResult(
+                rule="r",
+                passed=False,
+                findings=[Finding("blocker", "f", 1, "", "msg")],
+            )
+        ]
         exceptions = [{"rules": "r", "reason": "ok", "expires": date.today()}]
         apply_exceptions(results, exceptions, "repo")
         assert results[0].findings[0].severity == "info"
 
     def test_expires_yesterday_not_honored(self):
         yesterday = date.today() - timedelta(days=1)
-        results = [RuleResult(
-            rule="r", passed=False,
-            findings=[Finding("blocker", "f", 1, "", "msg")],
-        )]
+        results = [
+            RuleResult(
+                rule="r",
+                passed=False,
+                findings=[Finding("blocker", "f", 1, "", "msg")],
+            )
+        ]
         exceptions = [{"rules": "r", "reason": "ok", "expires": yesterday}]
         apply_exceptions(results, exceptions, "repo")
         assert results[0].findings[0].severity == "blocker"
 
     def test_no_expires_field_is_permanent(self):
-        results = [RuleResult(
-            rule="r", passed=False,
-            findings=[Finding("blocker", "f", 1, "", "msg")],
-        )]
+        results = [
+            RuleResult(
+                rule="r",
+                passed=False,
+                findings=[Finding("blocker", "f", 1, "", "msg")],
+            )
+        ]
         exceptions = [{"rules": "r", "reason": "permanent"}]
         apply_exceptions(results, exceptions, "repo")
         assert results[0].findings[0].severity == "info"
 
     def test_expired_exception_hit_count_zero(self):
-        results = [RuleResult(
-            rule="r", passed=False,
-            findings=[Finding("blocker", "f", 1, "", "msg")],
-        )]
-        exceptions = [{"rules": "r", "reason": "expired",
-                        "expires": date(2020, 1, 1)}]
+        results = [
+            RuleResult(
+                rule="r",
+                passed=False,
+                findings=[Finding("blocker", "f", 1, "", "msg")],
+            )
+        ]
+        exceptions = [{"rules": "r", "reason": "expired", "expires": date(2020, 1, 1)}]
         hits = apply_exceptions(results, exceptions, "repo")
         assert hits == [0]
 
     def test_mix_of_expired_and_active(self):
-        results = [RuleResult(
-            rule="r", passed=False,
-            findings=[Finding("blocker", "f", 1, "", "msg")],
-        )]
+        results = [
+            RuleResult(
+                rule="r",
+                passed=False,
+                findings=[Finding("blocker", "f", 1, "", "msg")],
+            )
+        ]
         exceptions = [
             {"rules": "r", "reason": "expired", "expires": date(2020, 1, 1)},
             {"rules": "r", "reason": "active", "expires": date(2099, 12, 31)},
@@ -1386,6 +1561,7 @@ class TestApplyExceptionsExpiration:
 # ---------------------------------------------------------------------------
 # Exception expiration — warnings and reports
 # ---------------------------------------------------------------------------
+
 
 class TestExpiringExceptionsReport:
     def test_find_expiring_exceptions(self):
@@ -1411,8 +1587,7 @@ class TestExpiringExceptionsReport:
 
     def test_expiring_section_in_markdown(self):
         soon = date.today() + timedelta(days=5)
-        exceptions = [{"rules": "r", "repo": "my-repo",
-                        "reason": "temp fix", "expires": soon}]
+        exceptions = [{"rules": "r", "repo": "my-repo", "reason": "temp fix", "expires": soon}]
         section = _build_expiring_exceptions_section(exceptions, [3])
         assert "Expiring Exceptions" in section
         assert "my-repo" in section
@@ -1425,39 +1600,58 @@ class TestExpiringExceptionsReport:
         soon = date.today() + timedelta(days=3)
         results = [RuleResult(rule="r")]
         exceptions = [{"rules": "r", "reason": "temp", "expires": soon}]
-        data = json.loads(render_json(
-            "READY", results, "repo",
-            exceptions=exceptions, exception_hits=[0],
-        ))
+        data = json.loads(
+            render_json(
+                "READY",
+                results,
+                "repo",
+                exceptions=exceptions,
+                exception_hits=[0],
+            )
+        )
         assert "expiring_exceptions" in data
         assert data["expiring_exceptions"][0]["days_remaining"] == 3
 
     def test_json_report_no_expiring_when_none(self):
         results = [RuleResult(rule="r")]
         exceptions = [{"rules": "r", "reason": "perm"}]
-        data = json.loads(render_json(
-            "READY", results, "repo",
-            exceptions=exceptions, exception_hits=[0],
-        ))
+        data = json.loads(
+            render_json(
+                "READY",
+                results,
+                "repo",
+                exceptions=exceptions,
+                exception_hits=[0],
+            )
+        )
         assert "expiring_exceptions" not in data
 
     def test_json_report_includes_expires_in_exceptions(self):
         results = [RuleResult(rule="r")]
-        exceptions = [{"rules": "r", "reason": "temp",
-                        "expires": date(2099, 12, 31)}]
-        data = json.loads(render_json(
-            "READY", results, "repo",
-            exceptions=exceptions, exception_hits=[1],
-        ))
+        exceptions = [{"rules": "r", "reason": "temp", "expires": date(2099, 12, 31)}]
+        data = json.loads(
+            render_json(
+                "READY",
+                results,
+                "repo",
+                exceptions=exceptions,
+                exception_hits=[1],
+            )
+        )
         assert data["exceptions"][0]["expires"] == "2099-12-31"
 
     def test_json_report_omits_expires_when_not_set(self):
         results = [RuleResult(rule="r")]
         exceptions = [{"rules": "r", "reason": "perm"}]
-        data = json.loads(render_json(
-            "READY", results, "repo",
-            exceptions=exceptions, exception_hits=[1],
-        ))
+        data = json.loads(
+            render_json(
+                "READY",
+                results,
+                "repo",
+                exceptions=exceptions,
+                exception_hits=[1],
+            )
+        )
         assert "expires" not in data["exceptions"][0]
 
     def test_applied_exceptions_section_shows_expires_column(self):
@@ -1478,19 +1672,18 @@ class TestExpiringExceptionsReport:
 # Exception expiration — schema validation
 # ---------------------------------------------------------------------------
 
+
 class TestSchemaExpiresField:
     def test_expires_field_accepted_by_schema(self):
         _validate_config_schema(
-            {"exceptions": [{"rules": "r", "reason": "ok",
-                              "expires": "2025-09-01"}]},
+            {"exceptions": [{"rules": "r", "reason": "ok", "expires": "2025-09-01"}]},
             "test.yaml",
         )
 
     def test_invalid_expires_type_fails_schema(self):
         with pytest.raises(ValueError, match="schema validation error"):
             _validate_config_schema(
-                {"exceptions": [{"rules": "r", "reason": "ok",
-                                  "expires": 123}]},
+                {"exceptions": [{"rules": "r", "reason": "ok", "expires": 123}]},
                 "test.yaml",
             )
 
@@ -1498,6 +1691,7 @@ class TestSchemaExpiresField:
 # ---------------------------------------------------------------------------
 # --list-expiring CLI flag
 # ---------------------------------------------------------------------------
+
 
 class TestListExpiring:
     def test_list_expiring_flag_parsed(self):
@@ -1523,6 +1717,7 @@ class TestListExpiring:
 
     def test_list_expiring_with_expiring_returns_two(self, tmp_path, capsys):
         from datetime import date, timedelta
+
         soon = (date.today() + timedelta(days=5)).isoformat()
         cfg = tmp_path / "config.yaml"
         cfg.write_text(
@@ -1562,6 +1757,7 @@ class TestListExpiring:
 
     def test_list_expiring_shows_both_expired_and_expiring(self, tmp_path, capsys):
         from datetime import date, timedelta
+
         soon = (date.today() + timedelta(days=3)).isoformat()
         cfg = tmp_path / "config.yaml"
         cfg.write_text(
@@ -1594,6 +1790,7 @@ class TestListExpiring:
 # Expired exceptions — helpers and reports
 # ---------------------------------------------------------------------------
 
+
 class TestExpiredExceptions:
     def test_find_expired_exceptions(self):
         exceptions = [
@@ -1620,8 +1817,9 @@ class TestExpiredExceptions:
         assert _find_expired_exceptions(exceptions) == []
 
     def test_expired_section_in_markdown(self):
-        exceptions = [{"rules": "r", "repo": "my-repo",
-                        "reason": "old fix", "expires": date(2020, 6, 15)}]
+        exceptions = [
+            {"rules": "r", "repo": "my-repo", "reason": "old fix", "expires": date(2020, 6, 15)}
+        ]
         section = _build_expired_exceptions_section(exceptions)
         assert "Expired Exceptions" in section
         assert "no longer applied" in section
@@ -1633,12 +1831,16 @@ class TestExpiredExceptions:
 
     def test_json_report_includes_expired_exceptions(self):
         results = [RuleResult(rule="r")]
-        exceptions = [{"rules": "r", "reason": "old",
-                        "expires": date(2020, 1, 1)}]
-        data = json.loads(render_json(
-            "READY", results, "repo",
-            exceptions=exceptions, exception_hits=[0],
-        ))
+        exceptions = [{"rules": "r", "reason": "old", "expires": date(2020, 1, 1)}]
+        data = json.loads(
+            render_json(
+                "READY",
+                results,
+                "repo",
+                exceptions=exceptions,
+                exception_hits=[0],
+            )
+        )
         assert "expired_exceptions" in data
         assert data["expired_exceptions"][0]["days_since_expiry"] > 0
         assert data["expired_exceptions"][0]["expires"] == "2020-01-01"
@@ -1646,8 +1848,13 @@ class TestExpiredExceptions:
     def test_json_report_no_expired_when_none(self):
         results = [RuleResult(rule="r")]
         exceptions = [{"rules": "r", "reason": "perm"}]
-        data = json.loads(render_json(
-            "READY", results, "repo",
-            exceptions=exceptions, exception_hits=[0],
-        ))
+        data = json.loads(
+            render_json(
+                "READY",
+                results,
+                "repo",
+                exceptions=exceptions,
+                exception_hits=[0],
+            )
+        )
         assert "expired_exceptions" not in data

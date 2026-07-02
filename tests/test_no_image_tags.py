@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from rules.common import ProductionScope
-from rules.no_image_tags import is_excluded_file, is_source_code, scan_file, run
+from rules.no_image_tags import is_excluded_file, is_source_code, run, scan_file
 
 
 class TestIsExcludedFile:
@@ -41,7 +41,7 @@ class TestScanFile:
         pkg = tmp_path / "pkg"
         pkg.mkdir()
         f = pkg / "main.go"
-        f.write_text('image: quay.io/org/img:latest')
+        f.write_text("image: quay.io/org/img:latest")
         findings = scan_file(f, tmp_path)
         assert len(findings) == 1
         assert findings[0].severity == "blocker"
@@ -51,7 +51,7 @@ class TestScanFile:
         manifests = tmp_path / "manifests"
         manifests.mkdir()
         f = manifests / "deploy.yaml"
-        f.write_text('image: quay.io/org/img:v1.0')
+        f.write_text("image: quay.io/org/img:v1.0")
         findings = scan_file(f, tmp_path)
         assert len(findings) == 1
         assert findings[0].severity == "blocker"
@@ -60,7 +60,7 @@ class TestScanFile:
         test_dir = tmp_path / "test"
         test_dir.mkdir()
         f = test_dir / "helper.go"
-        f.write_text('image: quay.io/org/img:v1.0')
+        f.write_text("image: quay.io/org/img:v1.0")
         findings = scan_file(f, tmp_path)
         assert len(findings) == 1
         assert findings[0].severity == "blocker"
@@ -69,7 +69,7 @@ class TestScanFile:
         pkg = tmp_path / "pkg"
         pkg.mkdir()
         f = pkg / "handler_test.go"
-        f.write_text('image: quay.io/org/img:v1.0')
+        f.write_text("image: quay.io/org/img:v1.0")
         findings = scan_file(f, tmp_path)
         assert len(findings) == 1
         assert findings[0].severity == "blocker"
@@ -83,17 +83,17 @@ class TestScanFile:
 
     def test_hash_comment_skipped(self, tmp_path):
         f = tmp_path / "deploy.yaml"
-        f.write_text('# image: quay.io/org/img:v1')
+        f.write_text("# image: quay.io/org/img:v1")
         assert scan_file(f, tmp_path) == []
 
     def test_slash_comment_skipped(self, tmp_path):
         f = tmp_path / "main.go"
-        f.write_text('// image: quay.io/org/img:v1')
+        f.write_text("// image: quay.io/org/img:v1")
         assert scan_file(f, tmp_path) == []
 
     def test_https_url_skipped(self, tmp_path):
         f = tmp_path / "go.mod"
-        f.write_text('require https://github.com/kubernetes/api:v0.28.0')
+        f.write_text("require https://github.com/kubernetes/api:v0.28.0")
         assert scan_file(f, tmp_path) == []
 
     def test_http_url_skipped(self, tmp_path):
@@ -108,14 +108,14 @@ class TestScanFile:
 
     def test_image_ref_not_url_still_detected(self, tmp_path):
         f = tmp_path / "deploy.yaml"
-        f.write_text('image: quay.io/org/img:v1')
+        f.write_text("image: quay.io/org/img:v1")
         findings = scan_file(f, tmp_path)
         assert len(findings) == 1
         assert findings[0].image == "quay.io/org/img:v1"
 
     def test_unreadable_file(self, tmp_path):
         f = tmp_path / "binary.go"
-        f.write_bytes(b'\x80\x81\x82' * 100)
+        f.write_bytes(b"\x80\x81\x82" * 100)
         assert scan_file(f, tmp_path) == []
 
     def test_finding_has_correct_line_number(self, tmp_path):
@@ -129,7 +129,7 @@ class TestScanFile:
         pkg = tmp_path / "pkg"
         pkg.mkdir()
         f = pkg / "client.go"
-        f.write_text('image: quay.io/org/img:latest')
+        f.write_text("image: quay.io/org/img:latest")
         findings = scan_file(f, tmp_path)
         assert findings[0].file == "pkg/client.go"
 
@@ -145,7 +145,7 @@ class TestRun:
         git_dir = tmp_path / ".git"
         git_dir.mkdir()
         f = git_dir / "config"
-        f.write_text('image: quay.io/org/img:latest')
+        f.write_text("image: quay.io/org/img:latest")
         result = run(str(tmp_path))
         assert result.findings == []
 
@@ -153,19 +153,19 @@ class TestRun:
         vendor = tmp_path / "vendor"
         vendor.mkdir()
         f = vendor / "dep.go"
-        f.write_text('image: quay.io/org/img:latest')
+        f.write_text("image: quay.io/org/img:latest")
         result = run(str(tmp_path))
         assert result.findings == []
 
     def test_skips_non_matching_extension(self, tmp_path):
         f = tmp_path / "readme.txt"
-        f.write_text('image: quay.io/org/img:latest')
+        f.write_text("image: quay.io/org/img:latest")
         result = run(str(tmp_path))
         assert result.findings == []
 
     def test_dockerfile_scanned(self, tmp_path):
         f = tmp_path / "Dockerfile"
-        f.write_text('FROM quay.io/org/base:latest')
+        f.write_text("FROM quay.io/org/base:latest")
         result = run(str(tmp_path))
         assert any(f.file == "Dockerfile" for f in result.findings)
 
@@ -173,7 +173,7 @@ class TestRun:
         manifests = tmp_path / "manifests"
         manifests.mkdir()
         f = manifests / "deploy.yaml"
-        f.write_text('image: quay.io/org/img:v1.0')
+        f.write_text("image: quay.io/org/img:v1.0")
         result = run(str(tmp_path))
         assert result.passed is False
         assert result.findings[0].severity == "blocker"
@@ -182,7 +182,7 @@ class TestRun:
         pkg = tmp_path / "pkg"
         pkg.mkdir()
         f = pkg / "main.go"
-        f.write_text('image: quay.io/org/img:latest')
+        f.write_text("image: quay.io/org/img:latest")
         result = run(str(tmp_path))
         assert result.passed is False
         assert any(f.severity == "blocker" for f in result.findings)
@@ -193,10 +193,8 @@ class TestRun:
         test_dir = tmp_path / "test"
         test_dir.mkdir()
 
-        (pkg / "main.go").write_text(
-            'image: quay.io/org/img@sha256:' + 'a' * 64
-        )
-        (test_dir / "helper.go").write_text('image: quay.io/org/img:v1')
+        (pkg / "main.go").write_text("image: quay.io/org/img@sha256:" + "a" * 64)
+        (test_dir / "helper.go").write_text("image: quay.io/org/img:v1")
 
         result = run(str(tmp_path))
         assert result.passed is False
@@ -214,7 +212,8 @@ class TestProductionScope:
         other = cmd / "main.go"
         other.write_text("package main\n")
         scope = ProductionScope(
-            production_dirs={cmd.resolve()}, method="go-import-graph",
+            production_dirs={cmd.resolve()},
+            method="go-import-graph",
         )
         result = run(str(tmp_path), production_scope=scope)
         assert result.passed is True
@@ -239,6 +238,8 @@ class TestProductionScope:
         scope = ProductionScope(method="go-import-graph")
         result = run(str(tmp_path), production_scope=scope)
         assert result.findings[0].severity == "blocker"
+
+
 class TestOciUri:
     def test_oci_uri_without_digest_is_blocker(self, tmp_path):
         f = tmp_path / "constants.py"
@@ -264,7 +265,7 @@ class TestOciUri:
 
     def test_oci_uri_with_tag_is_blocker(self, tmp_path):
         f = tmp_path / "deploy.yaml"
-        f.write_text('storage_uri: oci://registry.example.com/org/model:v1.0')
+        f.write_text("storage_uri: oci://registry.example.com/org/model:v1.0")
         findings = scan_file(f, tmp_path)
         assert len(findings) == 1
         assert findings[0].severity == "blocker"
@@ -272,7 +273,7 @@ class TestOciUri:
 
     def test_oci_uri_in_params_env_is_info(self, tmp_path):
         f = tmp_path / "params.env"
-        f.write_text('MODEL=oci://quay.io/org/model-name')
+        f.write_text("MODEL=oci://quay.io/org/model-name")
         findings = scan_file(f, tmp_path)
         assert len(findings) == 1
         assert findings[0].severity == "info"
@@ -287,7 +288,8 @@ class TestOciUri:
         other = cmd / "main.go"
         other.write_text("package main\n")
         scope = ProductionScope(
-            production_dirs={cmd.resolve()}, method="go-import-graph",
+            production_dirs={cmd.resolve()},
+            method="go-import-graph",
         )
         result = run(str(tmp_path), production_scope=scope)
         oci_findings = [f for f in result.findings if "oci://" in f.image]
@@ -301,7 +303,7 @@ class TestOciUri:
 
     def test_oci_uri_sets_passed_false(self, tmp_path):
         f = tmp_path / "deploy.yaml"
-        f.write_text('storage_uri: oci://quay.io/org/model-name')
+        f.write_text("storage_uri: oci://quay.io/org/model-name")
         result = run(str(tmp_path))
         assert result.passed is False
 
@@ -348,7 +350,7 @@ class TestK8sUnqualifiedImage:
 
     def test_unqualified_image_not_matched_in_go(self, tmp_path):
         f = tmp_path / "main.go"
-        f.write_text('image: origin-cli:latest')
+        f.write_text("image: origin-cli:latest")
         findings = scan_file(f, tmp_path)
         assert findings == []
 

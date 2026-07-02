@@ -9,14 +9,22 @@ import os
 import sys
 from datetime import datetime
 
-from .utils import RATE_LIMIT_CHECK_INTERVAL, OP_CHECK, OP_MARK_CHECKED, OP_CHECK_CHANGED, OP_UPDATE_STATE
 from .config import AutomationConfig
 from .github_client import GitHubClient
-from .state import StateManager
-from .workflows import WorkflowDetector, TemplateRenderer
-from .repositories import RepositoryClassifier
-from .utils import READY_FOR_WORKFLOW, ALREADY_HAS_WORKFLOW, EXCLUDED_REPOSITORY
 from .pr_creator import PRCreator
+from .repositories import RepositoryClassifier
+from .state import StateManager
+from .utils import (
+    ALREADY_HAS_WORKFLOW,
+    EXCLUDED_REPOSITORY,
+    OP_CHECK,
+    OP_CHECK_CHANGED,
+    OP_MARK_CHECKED,
+    OP_UPDATE_STATE,
+    RATE_LIMIT_CHECK_INTERVAL,
+    READY_FOR_WORKFLOW,
+)
+from .workflows import TemplateRenderer, WorkflowDetector
 
 
 class DRSAutomation:
@@ -28,15 +36,13 @@ class DRSAutomation:
         self.state_manager = StateManager(self.config)
         self.workflow_detector = WorkflowDetector()
         self.template_renderer = TemplateRenderer(self.config)
-        self.pr_creator = PRCreator(
-            self.config, self.template_renderer, self.github_client
-        )
+        self.pr_creator = PRCreator(self.config, self.template_renderer, self.github_client)
 
     def _parse_organizations_input(self):
         """Parse organization list from INPUT_ORGANIZATIONS environment variable."""
-        organizations_input = os.getenv('INPUT_ORGANIZATIONS', '')
+        organizations_input = os.getenv("INPUT_ORGANIZATIONS", "")
 
-        organizations = [org.strip() for org in organizations_input.split(',') if org.strip()]
+        organizations = [org.strip() for org in organizations_input.split(",") if org.strip()]
 
         if not organizations:
             print("ERROR: No organizations specified")
@@ -48,9 +54,9 @@ class DRSAutomation:
         """Main entry point for DRS PR automation."""
         # Parse inputs from environment (set by GitHub Actions)
         organizations = self._parse_organizations_input()
-        dry_run = os.getenv('INPUT_DRY_RUN', 'true').lower() == 'true'
-        force_full_scan = os.getenv('INPUT_FORCE_FULL_SCAN', 'false').lower() == 'true'
-        trigger_reason = os.getenv('TRIGGER_REASON', 'manual')
+        dry_run = os.getenv("INPUT_DRY_RUN", "true").lower() == "true"
+        force_full_scan = os.getenv("INPUT_FORCE_FULL_SCAN", "false").lower() == "true"
+        trigger_reason = os.getenv("TRIGGER_REASON", "manual")
 
         print("DRS PR AUTOMATION")
         print(f"Organizations: {organizations}")
@@ -64,8 +70,10 @@ class DRSAutomation:
         inclusions = self.config.load_inclusions()
 
         # Handle template change detection
-        if trigger_reason == 'template_change':
-            should_process_on_template, template_reason = self.state_manager.manage_template(OP_CHECK_CHANGED)
+        if trigger_reason == "template_change":
+            should_process_on_template, template_reason = self.state_manager.manage_template(
+                OP_CHECK_CHANGED
+            )
 
             if not should_process_on_template:
                 print(f"Template change processing not needed: {template_reason}")
@@ -85,7 +93,9 @@ class DRSAutomation:
         print(f"API Status: {rate_limit.status_message}")
 
         if not rate_limit.is_safe:
-            print("WARNING: Low API rate limit. Consider running later or with fewer organizations.")
+            print(
+                "WARNING: Low API rate limit. Consider running later or with fewer organizations."
+            )
             if not dry_run:
                 print("Continuing anyway, but processing may be throttled...")
 
@@ -114,13 +124,21 @@ class DRSAutomation:
                 # Check if we need to process this organization (state-based optimization)
                 if force_full_scan:
                     should_process = True
-                    reason = "Force full scan requested" if trigger_reason != 'template_change' else "Template change propagation"
+                    reason = (
+                        "Force full scan requested"
+                        if trigger_reason != "template_change"
+                        else "Template change propagation"
+                    )
                 else:
-                    should_process, reason = self.state_manager.manage_organization(org_name, current_repo_count, OP_CHECK)
+                    should_process, reason = self.state_manager.manage_organization(
+                        org_name, current_repo_count, OP_CHECK
+                    )
 
                 if not should_process:
                     print(f"  Skipping {org_name}: {reason}")
-                    self.state_manager.manage_organization(org_name, current_repo_count, OP_MARK_CHECKED)
+                    self.state_manager.manage_organization(
+                        org_name, current_repo_count, OP_MARK_CHECKED
+                    )
                     orgs_skipped_no_changes += 1
                     continue
 
@@ -130,14 +148,16 @@ class DRSAutomation:
                 # Get all repositories and classify them (with retry)
                 from .utils import retry_github_operation
 
-                def _get_repositories():
+                def _get_repositories(account=account):
                     return list(account.get_repos())
 
                 repositories = retry_github_operation(_get_repositories)
                 total_repos += len(repositories)
 
                 # Classify all repositories at once (with exclusions)
-                grouped_classifications = classifier.classify_repositories(repositories, trigger_reason)
+                grouped_classifications = classifier.classify_repositories(
+                    repositories, trigger_reason
+                )
 
                 # Print analysis summary
                 print(classifier.generate_summary_report(grouped_classifications))
@@ -158,7 +178,8 @@ class DRSAutomation:
 
                     for classification in ready_repos:
                         try:
-                            def _get_repo():
+
+                            def _get_repo(classification=classification):
                                 return self.github_client.client.get_repo(classification.repo_name)
 
                             repo = retry_github_operation(_get_repo)
@@ -167,25 +188,29 @@ class DRSAutomation:
                             # Use enhanced PR creation function
                             result = self.pr_creator.create_disconnected_readiness_pr(
                                 repo,
-                                branch_name_suffix=f"-{trigger_reason}" if trigger_reason != 'manual' else "",
+                                branch_name_suffix=f"-{trigger_reason}"
+                                if trigger_reason != "manual"
+                                else "",
                                 dry_run=dry_run,
-                                trigger_reason=trigger_reason
+                                trigger_reason=trigger_reason,
                             )
 
-                            if result.action == 'skipped':
+                            if result.action == "skipped":
                                 print(f"      Skipped: {result.reason}")
                                 skip_count += 1
-                            elif result.action in ['created', 'simulated']:
-                                if result.action == 'created':
+                            elif result.action in ["created", "simulated"]:
+                                if result.action == "created":
                                     print(f"     Created PR: {result.pr_url}")
                                 else:
                                     print(f"     {result.reason}")
                                 success_count += 1
-                            elif result.action == 'error':
+                            elif result.action == "error":
                                 print(f"     Failed: {result.reason}")
 
                         except Exception as e:
-                            print(f"     ERROR processing {classification.repo_name}: {str(e)[:100]}")
+                            print(
+                                f"     ERROR processing {classification.repo_name}: {str(e)[:100]}"
+                            )
 
                         # Check rate limits periodically
                         if success_count % RATE_LIMIT_CHECK_INTERVAL == 0:
@@ -197,20 +222,20 @@ class DRSAutomation:
                     print(" No repositories need processing in this organization")
 
                 # Mark organization as processed
-                self.state_manager.manage_organization(org_name, current_repo_count, OP_MARK_CHECKED)
+                self.state_manager.manage_organization(
+                    org_name, current_repo_count, OP_MARK_CHECKED
+                )
 
             except Exception as e:
                 error_msg = f"Failed to process organization {org_name}: {str(e)}"
                 print(f" ERROR: {error_msg}")
-                failed_orgs.append({
-                    'org_name': org_name,
-                    'error': str(e),
-                    'timestamp': datetime.now().isoformat()
-                })
+                failed_orgs.append(
+                    {"org_name": org_name, "error": str(e), "timestamp": datetime.now().isoformat()}
+                )
                 continue
 
         # Update template state if this was a template change run
-        if trigger_reason == 'template_change' and not dry_run:
+        if trigger_reason == "template_change" and not dry_run:
             success, message = self.state_manager.manage_template(OP_UPDATE_STATE)
             if success:
                 print(f"\n {message}")
@@ -229,8 +254,14 @@ class DRSAutomation:
         print(f" Already had workflows: {already_has_workflow}")
         print(f" Not included: {excluded_count}")
         print(f"  Other skipped: {skip_count}")
-        print(f" Success rate: {((success_count + already_has_workflow) / total_repos * 100):.1f}%" if total_repos > 0 else "Success rate: 0%")
-        print(f" Efficiency: {orgs_skipped_no_changes} orgs skipped = ~{orgs_skipped_no_changes * 50} API calls saved")
+        print(
+            f" Success rate: {((success_count + already_has_workflow) / total_repos * 100):.1f}%"
+            if total_repos > 0
+            else "Success rate: 0%"
+        )
+        print(
+            f" Efficiency: {orgs_skipped_no_changes} orgs skipped = ~{orgs_skipped_no_changes * 50} API calls saved"
+        )
         print(f" Mode: {'DRY RUN - No changes made' if dry_run else 'LIVE DEPLOYMENT'}")
 
         # Report failed organizations if any
@@ -244,7 +275,7 @@ class DRSAutomation:
         print(f" Final API status: {final_rate_limit.status_message}")
 
         # Show updated state
-        print(f"\n Updated State:")
+        print("\n Updated State:")
         print(self.state_manager.get_summary_report())
 
 
@@ -254,5 +285,5 @@ def main():
     automation.run()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

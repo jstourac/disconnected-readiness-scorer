@@ -9,7 +9,6 @@ import json
 import re
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 try:
     from rules.common import ArchAnalyzerResult, ProductionScope
@@ -71,12 +70,12 @@ def _walk_kustomize_resources(overlay_dir: Path, dirs: set[Path]):
                 in_resources = False
 
 
-_GO_EMBED_RE = re.compile(r'//go:embed\s+(.+)')
+_GO_EMBED_RE = re.compile(r"//go:embed\s+(.+)")
 
 
 def _collect_go_embedded_yamls(
     repo_root: Path,
-    production_dirs: Optional[set[Path]],
+    production_dirs: set[Path] | None,
 ) -> set[Path]:
     """Find YAML files referenced by ``//go:embed`` in production .go files."""
     if not production_dirs:
@@ -116,7 +115,7 @@ def _collect_go_embedded_yamls(
     return embedded
 
 
-def collect_manifest_scope_files(source_dir: Path) -> Optional[set[Path]]:
+def collect_manifest_scope_files(source_dir: Path) -> set[Path] | None:
     """Collect production YAML files from a source directory.
 
     Auto-detects kustomize (walk graph) vs helm (include all chart files).
@@ -133,12 +132,12 @@ def collect_manifest_scope_files(source_dir: Path) -> Optional[set[Path]]:
 
     files: set[Path] = set()
 
-    _HELM_SKIP_PARTS = {"tests", "test", "examples"}
+    _helm_skip_parts = {"tests", "test", "examples"}
     if has_chart:
         for f in source_dir.rglob("*"):
             if f.is_file() and f.suffix in _YAML_SUFFIXES:
                 rel = f.relative_to(source_dir)
-                if _HELM_SKIP_PARTS.intersection(rel.parts):
+                if _helm_skip_parts.intersection(rel.parts):
                     continue
                 files.add(f.resolve())
 
@@ -161,7 +160,7 @@ def collect_manifest_scope_files(source_dir: Path) -> Optional[set[Path]]:
 # ---------------------------------------------------------------------------
 
 
-_DOCKER_ARG_RE = re.compile(r'\$\{[^}]+\}')
+_DOCKER_ARG_RE = re.compile(r"\$\{[^}]+\}")
 
 
 def _is_glob_source(source_stripped: str) -> bool:
@@ -176,6 +175,7 @@ def _normalize_glob(source_stripped: str) -> str:
     * when it appears mid-component (e.g. file.${EXT}.txt) since ** is
     only valid as a complete path segment in Path.glob().
     """
+
     def _replace(m):
         start, end = m.start(), m.end()
         at_start = start == 0 or source_stripped[start - 1] == "/"
@@ -183,6 +183,7 @@ def _normalize_glob(source_stripped: str) -> str:
         if at_start and at_end:
             return "**"
         return "*"
+
     return _DOCKER_ARG_RE.sub(_replace, source_stripped)
 
 
@@ -205,7 +206,7 @@ def _glob_source(source_stripped: str, repo_root: Path, resolved_root: Path) -> 
     return results
 
 
-def _find_go_module_dir(all_sources: list[str], repo_root: Path) -> Optional[Path]:
+def _find_go_module_dir(all_sources: list[str], repo_root: Path) -> Path | None:
     """Find the Go module root by locating go.mod via glob across all sources."""
     for s in all_sources:
         pat = _normalize_glob(s.strip("/"))
@@ -225,7 +226,10 @@ def _go_list_production_dirs(module_dir: Path) -> set[Path]:
     try:
         result = subprocess.run(
             ["go", "list", "-deps", "-json", "./..."],
-            cwd=module_dir, capture_output=True, text=True, timeout=60,
+            cwd=module_dir,
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
         if result.returncode != 0:
             return set()
@@ -271,8 +275,9 @@ def _is_js_monorepo(repo_root: Path) -> bool:
 
 
 def _extract_production_sources_from_arch_data(
-    arch_data: ArchAnalyzerResult, repo_root: Path,
-    docker_contexts: Optional[dict] = None,
+    arch_data: ArchAnalyzerResult,
+    repo_root: Path,
+    docker_contexts: dict | None = None,
 ) -> tuple[set[Path], set[Path], set[Path], list[str]]:
     """Extract production sources from arch-analyzer dockerfiles.
 
@@ -316,9 +321,7 @@ def _extract_production_sources_from_arch_data(
                     production_files.add(ep_path.resolve())
 
         all_sources: list[str] = [
-            s
-            for ci in dockerfile.copy_instructions
-            for s in ci.original_sources
+            s for ci in dockerfile.copy_instructions for s in ci.original_sources
         ]
 
         for copy_instr in dockerfile.copy_instructions:
@@ -360,12 +363,11 @@ def _extract_production_sources_from_arch_data(
                         if df_go_mod.exists():
                             go_dirs = _go_list_production_dirs(resolved_df_dir)
                             if go_dirs:
-                                production_dirs.update(
-                                    d for d in go_dirs if _inside_repo(d)
-                                )
+                                production_dirs.update(d for d in go_dirs if _inside_repo(d))
                                 continue
                         pkg_dir = _nearest_package_json_dir(
-                            dockerfile_dir, repo_root,
+                            dockerfile_dir,
+                            repo_root,
                         )
                         if pkg_dir != resolved_root and _inside_repo(pkg_dir):
                             production_dirs.add(pkg_dir)
@@ -374,9 +376,7 @@ def _extract_production_sources_from_arch_data(
                     go_module_dir = _find_go_module_dir(all_sources, repo_root)
                     if go_module_dir:
                         go_dirs = _go_list_production_dirs(go_module_dir)
-                        production_dirs.update(
-                            d for d in go_dirs if _inside_repo(d)
-                        )
+                        production_dirs.update(d for d in go_dirs if _inside_repo(d))
                         continue
 
                     if js_monorepo:
@@ -416,11 +416,11 @@ def _extract_production_sources_from_arch_data(
 
 def compute_production_scope(
     repo_root: Path,
-    manifest_source_folders: Optional[list] = None,
-    overlay_paths: Optional[list] = None,
-    arch_data: Optional[ArchAnalyzerResult] = None,
-    docker_contexts: Optional[dict] = None,
-) -> Optional[ProductionScope]:
+    manifest_source_folders: list | None = None,
+    overlay_paths: list | None = None,
+    arch_data: ArchAnalyzerResult | None = None,
+    docker_contexts: dict | None = None,
+) -> ProductionScope | None:
     """Compute the production file scope for a repository using arch-analyzer.
 
     *manifest_source_folders* is an optional list of relative directories
@@ -438,8 +438,8 @@ def compute_production_scope(
     """
     repo_root = Path(repo_root)
 
-    production_dirs: Optional[set[Path]] = None
-    production_files: Optional[set[Path]] = None
+    production_dirs: set[Path] | None = None
+    production_files: set[Path] | None = None
     arch_manifest_dirs: set[Path] = set()
     method = ""
 
@@ -447,7 +447,9 @@ def compute_production_scope(
     if arch_data:
         arch_prod_dirs, arch_prod_files, arch_manifest_dirs, arch_manifest_folders = (
             _extract_production_sources_from_arch_data(
-                arch_data, repo_root, docker_contexts=docker_contexts,
+                arch_data,
+                repo_root,
+                docker_contexts=docker_contexts,
             )
         )
         if arch_prod_dirs or arch_prod_files:
@@ -458,8 +460,8 @@ def compute_production_scope(
             manifest_source_folders = arch_manifest_folders
 
     # --- Manifest scope ---
-    manifest_files: Optional[set[Path]] = None
-    manifest_source_str: Optional[str] = None
+    manifest_files: set[Path] | None = None
+    manifest_source_str: str | None = None
 
     if manifest_source_folders:
         manifest_source_str = ",".join(manifest_source_folders)

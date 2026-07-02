@@ -23,6 +23,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --extra dev
 
+      - name: Lint with ruff
+        run: |
+          uv run ruff check . --output-format=github
+          uv run ruff format --check .
+
       - name: Run tests with coverage
         run: |
           if [ -d tests ]; then

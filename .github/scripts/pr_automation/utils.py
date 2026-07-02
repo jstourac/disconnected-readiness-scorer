@@ -9,18 +9,17 @@ import time
 
 from github import UnknownObjectException
 
-
 # Configuration constants
 RATE_LIMIT_SAFETY_THRESHOLD = 100  # Minimum API requests before warning
-RATE_LIMIT_CHECK_INTERVAL = 5      # Check rate limit every N successful operations
-MAX_RETRIES = 3                    # Maximum retry attempts for GitHub API calls
-RETRY_BASE_DELAY = 1               # Base delay between retries (seconds)
+RATE_LIMIT_CHECK_INTERVAL = 5  # Check rate limit every N successful operations
+MAX_RETRIES = 3  # Maximum retry attempts for GitHub API calls
+RETRY_BASE_DELAY = 1  # Base delay between retries (seconds)
 
 # State management operation constants
-OP_CHECK = 'check'
-OP_MARK_CHECKED = 'mark_checked'
-OP_CHECK_CHANGED = 'check_changed'
-OP_UPDATE_STATE = 'update_state'
+OP_CHECK = "check"
+OP_MARK_CHECKED = "mark_checked"
+OP_CHECK_CHANGED = "check_changed"
+OP_UPDATE_STATE = "update_state"
 
 # State management message constants
 MSG_TEMPLATE_UNCHANGED = "Template unchanged"
@@ -28,11 +27,11 @@ MSG_TEMPLATE_NOT_FOUND = "Template file not found"
 MSG_INITIAL_TEMPLATE_SETUP = "Initial template tracking setup"
 
 # Repository classification constants
-READY_FOR_WORKFLOW = 'ready_for_workflow'
-ALREADY_HAS_WORKFLOW = 'already_has_workflow'
-ARCHIVED_REPOSITORY = 'archived_repository'
-EXCLUDED_REPOSITORY = 'excluded_repository'
-API_ERROR = 'api_error'
+READY_FOR_WORKFLOW = "ready_for_workflow"
+ALREADY_HAS_WORKFLOW = "already_has_workflow"
+ARCHIVED_REPOSITORY = "archived_repository"
+EXCLUDED_REPOSITORY = "excluded_repository"
+API_ERROR = "api_error"
 
 
 def retry_github_operation(func, max_retries=MAX_RETRIES):
@@ -48,7 +47,7 @@ def retry_github_operation(func, max_retries=MAX_RETRIES):
                 raise e
 
             # Calculate exponential backoff delay
-            delay = RETRY_BASE_DELAY * (2 ** attempt)
+            delay = RETRY_BASE_DELAY * (2**attempt)
             print(f"    Retry {attempt + 1}/{max_retries} in {delay}s after error: {str(e)[:100]}")
             time.sleep(delay)
 

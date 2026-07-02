@@ -1,7 +1,5 @@
 """Tests for rules/no_runtime_egress.py"""
 
-from pathlib import Path
-
 from rules.common import ProductionScope
 from rules.no_runtime_egress import has_configurable_url, run
 
@@ -147,7 +145,7 @@ class TestRun:
 
     def test_unreadable_file_skipped(self, tmp_path):
         f = tmp_path / "bad.go"
-        f.write_bytes(b'\x80\x81\x82' * 100)
+        f.write_bytes(b"\x80\x81\x82" * 100)
         result = run(str(tmp_path))
         assert result.findings == []
 
@@ -171,7 +169,8 @@ class TestRun:
         other = cmd / "main.go"
         other.write_text("package main\n")
         scope = ProductionScope(
-            production_dirs={cmd.resolve()}, method="go-import-graph",
+            production_dirs={cmd.resolve()},
+            method="go-import-graph",
         )
         result = run(str(tmp_path), production_scope=scope)
         assert result.passed is True
@@ -233,6 +232,7 @@ class TestRun:
         result = run(str(tmp_path))
         assert result.passed is True
         assert result.findings[0].severity == "info"
+
     def test_hf_download_in_shell_detected(self, tmp_path):
         f = tmp_path / "setup.sh"
         f.write_text("hf download ibm-granite/granite-embedding-125m-english")
@@ -321,10 +321,10 @@ class TestYamlEgress:
     def test_yaml_curl_hardcoded_url_is_blocker(self, tmp_path):
         f = tmp_path / "cronjob.yaml"
         f.write_text(
-            'command:\n'
-            '  - /bin/sh\n'
-            '  - -c\n'
-            '  - curl https://external.example.com/repo/repodata.json\n'
+            "command:\n"
+            "  - /bin/sh\n"
+            "  - -c\n"
+            "  - curl https://external.example.com/repo/repodata.json\n"
         )
         result = run(str(tmp_path))
         assert result.passed is False
@@ -334,14 +334,14 @@ class TestYamlEgress:
 
     def test_yml_curl_hardcoded_url_is_blocker(self, tmp_path):
         f = tmp_path / "job.yml"
-        f.write_text('args:\n  - curl https://external.example.com/data\n')
+        f.write_text("args:\n  - curl https://external.example.com/data\n")
         result = run(str(tmp_path))
         assert result.passed is False
         assert any(f.severity == "blocker" for f in result.findings)
 
     def test_yaml_curl_configurable_url_is_info(self, tmp_path):
         f = tmp_path / "pod.yaml"
-        f.write_text('command:\n  - curl ${BASE_URL}/health\n')
+        f.write_text("command:\n  - curl ${BASE_URL}/health\n")
         result = run(str(tmp_path))
         assert result.passed is True
         assert len(result.findings) == 1
@@ -349,21 +349,21 @@ class TestYamlEgress:
 
     def test_yaml_wget_hardcoded_url_is_blocker(self, tmp_path):
         f = tmp_path / "job.yaml"
-        f.write_text('command:\n  - wget https://external.example.com/binary\n')
+        f.write_text("command:\n  - wget https://external.example.com/binary\n")
         result = run(str(tmp_path))
         assert result.passed is False
         assert any("wget" in f.message for f in result.findings)
 
     def test_yaml_comment_with_curl_is_skipped(self, tmp_path):
         f = tmp_path / "manifest.yaml"
-        f.write_text('# curl https://example.com\nkind: CronJob\n')
+        f.write_text("# curl https://example.com\nkind: CronJob\n")
         result = run(str(tmp_path))
         assert result.passed is True
         assert len(result.findings) == 0
 
     def test_yaml_curl_no_url_is_info(self, tmp_path):
         f = tmp_path / "job.yaml"
-        f.write_text('command:\n  - curl -s /health\n')
+        f.write_text("command:\n  - curl -s /health\n")
         result = run(str(tmp_path))
         assert result.passed is True
         assert len(result.findings) == 1
@@ -371,7 +371,9 @@ class TestYamlEgress:
 
     def test_yaml_curl_cluster_svc_is_info(self, tmp_path):
         f = tmp_path / "cronjob.yaml"
-        f.write_text('command:\n  - curl -sf -X POST http://internal-svc:8080/internal/v1/cleanup\n')
+        f.write_text(
+            "command:\n  - curl -sf -X POST http://internal-svc:8080/internal/v1/cleanup\n"
+        )
         result = run(str(tmp_path))
         assert result.passed is True
         assert len(result.findings) == 1
@@ -380,7 +382,9 @@ class TestYamlEgress:
 
     def test_yaml_curl_cluster_full_svc_is_info(self, tmp_path):
         f = tmp_path / "cronjob.yaml"
-        f.write_text('command:\n  - curl -sf -X POST http://internal-svc.ns.svc.cluster.local:8080/internal/v1/cleanup\n')
+        f.write_text(
+            "command:\n  - curl -sf -X POST http://internal-svc.ns.svc.cluster.local:8080/internal/v1/cleanup\n"
+        )
         result = run(str(tmp_path))
         assert result.passed is True
         assert len(result.findings) == 1
@@ -389,14 +393,14 @@ class TestYamlEgress:
 
     def test_sh_curl_cluster_svc_is_info(self, tmp_path):
         f = tmp_path / "cleanup.sh"
-        f.write_text('curl -sf http://my-service:9090/health\n')
+        f.write_text("curl -sf http://my-service:9090/health\n")
         result = run(str(tmp_path))
         assert result.passed is True
         assert result.findings[0].severity == "info"
 
     def test_sh_curl_cluster_svc_no_trailing_slash_is_info(self, tmp_path):
         f = tmp_path / "check.sh"
-        f.write_text('curl -sf http://my-service:9090\n')
+        f.write_text("curl -sf http://my-service:9090\n")
         result = run(str(tmp_path))
         assert result.passed is True
         assert result.findings[0].severity == "info"

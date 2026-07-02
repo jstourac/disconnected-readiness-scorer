@@ -7,7 +7,7 @@ Handles all configuration loading and path resolution.
 
 import os
 from pathlib import Path
-from typing import Set
+
 from ruamel.yaml import YAML
 
 
@@ -21,21 +21,20 @@ class AutomationConfig:
         """Find repository root using GitHub Actions workspace or current directory."""
         return Path(os.environ.get("GITHUB_WORKSPACE", Path.cwd()))
 
-    def load_inclusions(self) -> Set[str]:
+    def load_inclusions(self) -> set[str]:
         """Load repository inclusion configuration for phased rollout."""
         try:
             config_file = Path(f"{self.repo_root}/.github/config/repositories.yaml")
 
             if config_file.exists():
-                yaml = YAML(typ='safe', pure=True)
-                with open(config_file, 'r') as f:
+                yaml = YAML(typ="safe", pure=True)
+                with open(config_file) as f:
                     config = yaml.load(f) or {}
-                return set(config.get('included_repositories') or [])
-            else:
-                print("Warning: No repository configuration found, no repos will be processed")
-                return set()
+                return set(config.get("included_repositories") or [])
+            print("Warning: No repository configuration found, no repos will be processed")
+            return set()
 
-        except (OSError, IOError, ValueError) as e:
+        except (OSError, ValueError) as e:
             print(f"Warning: Could not load repository configuration: {e}")
             return set()
 

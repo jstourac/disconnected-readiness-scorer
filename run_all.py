@@ -36,6 +36,7 @@ def load_repos(config_path):
     text = path.read_text()
     try:
         import yaml
+
         data = yaml.safe_load(text)
     except ImportError:
         data = _parse_repos_fallback(text)
@@ -72,8 +73,14 @@ def _parse_repos_fallback(text):
 def clone_repo(org, repo, dest):
     url = f"{GITHUB_URL}/{org}/{repo}.git"
     cmd = [
-        "git", "clone", "--depth", "1", "--single-branch", "--no-tags",
-        url, str(dest),
+        "git",
+        "clone",
+        "--depth",
+        "1",
+        "--single-branch",
+        "--no-tags",
+        url,
+        str(dest),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
@@ -84,8 +91,14 @@ def clone_repo(org, repo, dest):
 def clone_operator(dest):
     url = f"{GITHUB_URL}/opendatahub-io/opendatahub-operator.git"
     cmd = [
-        "git", "clone", "--depth", "1", "--single-branch", "--no-tags",
-        url, str(dest),
+        "git",
+        "clone",
+        "--depth",
+        "1",
+        "--single-branch",
+        "--no-tags",
+        url,
+        str(dest),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
@@ -102,11 +115,13 @@ def _run_arch_analyzer_on_dir(target_dir):
         subprocess.run(
             [ARCH_ANALYZER_BIN, "extract", ".", "--extractors", "docker,kustomize"],
             cwd=str(target_dir),
-            capture_output=True, timeout=300, check=True,
+            capture_output=True,
+            timeout=300,
+            check=True,
         )
         return str(target_dir), True, ""
     except subprocess.CalledProcessError as e:
-        stderr_msg = e.stderr.decode(errors='replace') if e.stderr else str(e)
+        stderr_msg = e.stderr.decode(errors="replace") if e.stderr else str(e)
         return str(target_dir), False, stderr_msg
     except (subprocess.TimeoutExpired, OSError) as e:
         return str(target_dir), False, str(e)
@@ -163,8 +178,8 @@ def generate_summary(output_dir, results):
     ]
     for r in summary_data:
         heading = f"{r['repo']} — {r['score']}"
-        anchor = re.sub(r'\s+', '-', heading.lower())
-        anchor = re.sub(r'[^a-z0-9_-]', '', anchor)
+        anchor = re.sub(r"\s+", "-", heading.lower())
+        anchor = re.sub(r"[^a-z0-9_-]", "", anchor)
         repo_link = f"[{r['repo']}]({GITHUB_URL}/{r['repo']})"
         lines.append(
             f"| {repo_link} | [{r['score']}](#{anchor}) | {r['blockers']} | {r['infos']} |"
@@ -185,18 +200,20 @@ def generate_summary(output_dir, results):
     for r in summary_data:
         if not r["rules"]:
             continue
-        lines += ["", f"---", "", f"## {r['repo']} — {r['score']}"]
+        lines += ["", "---", "", f"## {r['repo']} — {r['score']}"]
         for rule in r["rules"]:
             findings = [f for f in rule.get("findings", []) if f["severity"] != "info"]
             if not findings:
                 lines.append(f"- **{rule['name']}**: PASS")
                 continue
-            lines.append(f"- **{rule['name']}**: {rule['blockers']} blocker(s), {rule.get('infos', 0)} info(s)")
+            lines.append(
+                f"- **{rule['name']}**: {rule['blockers']} blocker(s), {rule.get('infos', 0)} info(s)"
+            )
             for f in findings:
                 if f.get("file") and f.get("line"):
                     loc = f"{f['file']}:{f['line']}"
                 elif f.get("file"):
-                    loc = f['file']
+                    loc = f["file"]
                 else:
                     loc = ""
                 lines.append(f"  - [{f['severity']}] {loc} {f['message']}")
@@ -210,9 +227,10 @@ def parse_args(argv=None):
         description="Run disconnected-readiness checks on all ODH component repos.",
     )
     parser.add_argument(
-        "--output-dir", default="reports",
+        "--output-dir",
+        default="reports",
         help="Base output directory (default: reports/). "
-             "Reports go into a YYYY-MM-DD subdirectory.",
+        "Reports go into a YYYY-MM-DD subdirectory.",
     )
     parser.add_argument(
         "--repos-config",
@@ -226,20 +244,26 @@ def parse_args(argv=None):
     parser.add_argument(
         "--operator-path",
         help="Path to pre-cloned opendatahub-operator. "
-             "If omitted, clones to a temporary directory.",
+        "If omitted, clones to a temporary directory.",
     )
     parser.add_argument(
-        "--repo", dest="single_repo",
+        "--repo",
+        dest="single_repo",
         help="Run only this repo (e.g. 'odh-dashboard' or 'opendatahub-io/odh-dashboard').",
     )
     parser.add_argument(
-        "--parallel", type=int, default=4, metavar="N",
+        "--parallel",
+        type=int,
+        default=4,
+        metavar="N",
         help="Run N repos concurrently (default: 4). Use 1 for sequential.",
     )
     parser.add_argument(
-        "--verbose", "-v", action="store_true",
+        "--verbose",
+        "-v",
+        action="store_true",
         help="Pass --verbose to main.py for detailed diagnostic output "
-             "(includes per-step timing and files_checked in JSON).",
+        "(includes per-step timing and files_checked in JSON).",
     )
     return parser.parse_args(argv)
 
@@ -293,7 +317,10 @@ def main(argv=None):
             t0 = time.monotonic()
             ok, clone_err = clone_repo(org, repo, repo_dir)
             if not ok:
-                print(f"  [{i}/{total}] {org}/{repo} — SKIP (clone failed: {clone_err})", file=sys.stderr)
+                print(
+                    f"  [{i}/{total}] {org}/{repo} — SKIP (clone failed: {clone_err})",
+                    file=sys.stderr,
+                )
                 continue
             elapsed = time.monotonic() - t0
             print(f"  [{i}/{total}] {org}/{repo} — cloned ({elapsed:.1f}s)", file=sys.stderr)
@@ -313,7 +340,7 @@ def main(argv=None):
             print(f"  WARNING: arch-analyzer failed on {d}: {error}", file=sys.stderr)
 
     # --- Phase 3: Pre-compute operator data (once) ---
-    from main import _run, load_manifest, _run_arch_analyzer
+    from main import _run, _run_arch_analyzer, load_manifest
 
     t0 = time.monotonic()
     manifest, manifest_env_vars = load_manifest(operator_path)
@@ -350,7 +377,8 @@ def main(argv=None):
 
         try:
             rc = _run(
-                scorer_args, operator_path,
+                scorer_args,
+                operator_path,
                 manifest=manifest,
                 manifest_env_vars=manifest_env_vars,
                 operator_arch_data=operator_arch_data,
@@ -360,6 +388,7 @@ def main(argv=None):
             rc = e.code if isinstance(e.code, int) else 1
         except Exception as e:
             import traceback
+
             rc = 1
             log_capture.write(f"    ERROR ({type(e).__name__}): {e}\n")
             log_capture.write(traceback.format_exc())
@@ -378,10 +407,7 @@ def main(argv=None):
     if args.parallel > 1:
         print(f"Scoring {len(repo_dirs)} repos ({args.parallel} parallel)...\n", file=sys.stderr)
         with ThreadPoolExecutor(max_workers=args.parallel) as pool:
-            futures = [
-                pool.submit(process_repo, i, entry)
-                for i, entry in enumerate(repos, 1)
-            ]
+            futures = [pool.submit(process_repo, i, entry) for i, entry in enumerate(repos, 1)]
             results_unordered = [f.result() for f in as_completed(futures)]
         results_ordered = sorted(results_unordered, key=lambda r: r[0])
     else:

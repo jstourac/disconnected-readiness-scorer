@@ -6,16 +6,18 @@ Wraps GitHub API operations and utilities including rate limiting.
 """
 
 import os
-from typing import Dict, Any, Tuple
 from dataclasses import dataclass
+from typing import Any
+
 from github import Github
 
-from .utils import retry_github_operation, RATE_LIMIT_SAFETY_THRESHOLD
+from .utils import RATE_LIMIT_SAFETY_THRESHOLD, retry_github_operation
 
 
 @dataclass
 class RateLimitStatus:
     """GitHub API rate limit status"""
+
     is_safe: bool
     remaining: int
     total: int
@@ -31,7 +33,7 @@ class GitHubClient:
 
     def _create_client(self) -> Github:
         """Create GitHub client with proper authentication."""
-        token = os.getenv('GH_APP_DR_TOKEN')
+        token = os.getenv("GH_APP_DR_TOKEN")
 
         if not token:
             raise ValueError(
@@ -62,27 +64,28 @@ class GitHubClient:
                 remaining=remaining,
                 total=total,
                 percentage_used=percentage_used,
-                status_message=status_message
+                status_message=status_message,
             )
 
-        except (OSError, IOError, ValueError, AttributeError) as e:
+        except (OSError, ValueError, AttributeError) as e:
             return RateLimitStatus(
                 is_safe=False,
                 remaining=0,
                 total=0,
                 percentage_used=100.0,
-                status_message=f"Error checking rate limit: {str(e)}"
+                status_message=f"Error checking rate limit: {str(e)}",
             )
 
-    def get_repo_metadata(self, repo) -> Dict[str, Any]:
+    def get_repo_metadata(self, repo) -> dict[str, Any]:
         """Extract minimal metadata needed for simplified rule assignment."""
         return {
-            'name': repo.name,  # Still needed for logging/display
-            'language': repo.language,  # Check if Python (for python rule)
+            "name": repo.name,  # Still needed for logging/display
+            "language": repo.language,  # Check if Python (for python rule)
         }
 
-    def get_account(self, org_name: str) -> Tuple[Any, str, int]:
+    def get_account(self, org_name: str) -> tuple[Any, str, int]:
         """Get organization account with retry logic."""
+
         def _get_account():
             account = self.client.get_organization(org_name)
             return account, "organization", account.public_repos

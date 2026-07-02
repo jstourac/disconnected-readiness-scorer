@@ -13,29 +13,43 @@ import tempfile
 from pathlib import Path
 
 try:
-    from rules.common import Finding, RuleResult, SKIP_DIRS
+    from rules.common import SKIP_DIRS, Finding, RuleResult
 except ModuleNotFoundError:
-    from common import Finding, RuleResult, SKIP_DIRS
+    from common import SKIP_DIRS, Finding, RuleResult
 
 try:
     from rules.params_env_utils import (
-        kustomize_available, kustomize_build, discover_overlays,
-        find_params_env_files, parse_params_env,
-        create_probe_overlay, extract_all_images,
+        DEFAULT_PARAMS_ENV_FILENAMES,
+        PROBE_SENTINEL,
+        create_probe_overlay,
+        discover_overlays,
+        extract_all_images,
+        extract_configmap_key_refs,
+        extract_env_configmap_mappings,
+        extract_kustomize_replacement_keys,
+        find_go_related_image_envs,
+        find_params_env_files,
+        kustomize_available,
+        kustomize_build,
+        parse_params_env,
         write_probe_params_env,
-        extract_configmap_key_refs, extract_kustomize_replacement_keys,
-        extract_env_configmap_mappings, find_go_related_image_envs,
-        PROBE_SENTINEL, DEFAULT_PARAMS_ENV_FILENAMES,
     )
 except ModuleNotFoundError:
     from params_env_utils import (
-        kustomize_available, kustomize_build, discover_overlays,
-        find_params_env_files, parse_params_env,
-        create_probe_overlay, extract_all_images,
+        DEFAULT_PARAMS_ENV_FILENAMES,
+        PROBE_SENTINEL,
+        create_probe_overlay,
+        discover_overlays,
+        extract_all_images,
+        extract_configmap_key_refs,
+        extract_env_configmap_mappings,
+        extract_kustomize_replacement_keys,
+        find_go_related_image_envs,
+        find_params_env_files,
+        kustomize_available,
+        kustomize_build,
+        parse_params_env,
         write_probe_params_env,
-        extract_configmap_key_refs, extract_kustomize_replacement_keys,
-        extract_env_configmap_mappings, find_go_related_image_envs,
-        PROBE_SENTINEL, DEFAULT_PARAMS_ENV_FILENAMES,
     )
 
 RULE_NAME = "params-env-wiring"
@@ -67,7 +81,8 @@ def _is_operator_repo(root: Path) -> bool:
 
 
 def _build_ignored_image_patterns(
-    ignored_keys: set[str], overlay_params: dict[str, str],
+    ignored_keys: set[str],
+    overlay_params: dict[str, str],
 ) -> list[str]:
     patterns: list[str] = []
     for k in ignored_keys:
@@ -94,24 +109,30 @@ def _check_wiring(
     wired_keys = ref_keys | replacement_keys
 
     for key in sorted(dir_active_keys - wired_keys):
-        result.findings.append(Finding(
-            severity="info",
-            file=str(kdir.relative_to(root) / "params.env"),
-            line=0, image="",
-            message=f"params.env key '{key}' is not consumed by kustomize "
-                    f"(no configMapKeyRef or replacement). Unused key — "
-                    f"image not referenced in rendered manifests.",
-        ))
+        result.findings.append(
+            Finding(
+                severity="info",
+                file=str(kdir.relative_to(root) / "params.env"),
+                line=0,
+                image="",
+                message=f"params.env key '{key}' is not consumed by kustomize "
+                f"(no configMapKeyRef or replacement). Unused key — "
+                f"image not referenced in rendered manifests.",
+            )
+        )
 
     for key in sorted(ref_keys):
         if key not in dir_params and _looks_like_image_key(key):
-            result.findings.append(Finding(
-                severity="info",
-                file=str(kdir.relative_to(root)),
-                line=0, image="",
-                message=f"configMapKeyRef references '{key}' which is not a "
-                        f"params.env image key.",
-            ))
+            result.findings.append(
+                Finding(
+                    severity="info",
+                    file=str(kdir.relative_to(root)),
+                    line=0,
+                    image="",
+                    message=f"configMapKeyRef references '{key}' which is not a "
+                    f"params.env image key.",
+                )
+            )
 
     env_mappings = extract_env_configmap_mappings(rendered)
     for env_name, cm_key, _ in env_mappings:
@@ -183,7 +204,8 @@ def _process_manifest_source_folder(
                         probe_dirs.append(candidate)
             else:
                 probe_dirs = sorted(
-                    k.parent for k in tmp_source.rglob("kustomization.yaml")
+                    k.parent
+                    for k in tmp_source.rglob("kustomization.yaml")
                     if not any(d in k.parts for d in SKIP_DIRS)
                 )
 
@@ -203,21 +225,27 @@ def _process_manifest_source_folder(
                         continue
                     result.passed = False
                     loc_str = ", ".join(locations) if locations else "unknown"
-                    result.findings.append(Finding(
-                        severity="blocker",
-                        file=str(orig_kdir.relative_to(root)),
-                        line=0, image=img,
-                        message=f"Hardcoded image '{img}' in operator-managed kustomize "
-                                f"dir without params.env wiring (found in {loc_str}). "
-                                f"Will not be mirrored in disconnected.",
-                    ))
+                    result.findings.append(
+                        Finding(
+                            severity="blocker",
+                            file=str(orig_kdir.relative_to(root)),
+                            line=0,
+                            image=img,
+                            message=f"Hardcoded image '{img}' in operator-managed kustomize "
+                            f"dir without params.env wiring (found in {loc_str}). "
+                            f"Will not be mirrored in disconnected.",
+                        )
+                    )
     except RuntimeError as e:
-        result.findings.append(Finding(
-            severity="info",
-            file=str(source_dir.relative_to(root)),
-            line=0, image="",
-            message=f"kustomize build failed for manifest source: {e}",
-        ))
+        result.findings.append(
+            Finding(
+                severity="info",
+                file=str(source_dir.relative_to(root)),
+                line=0,
+                image="",
+                message=f"kustomize build failed for manifest source: {e}",
+            )
+        )
 
     if not has_params:
         return 0
@@ -244,8 +272,13 @@ def _process_manifest_source_folder(
             continue
 
         _check_wiring(
-            kdir, root, original_rendered, dir_params,
-            ignored_keys, result, all_manifest_related_vars,
+            kdir,
+            root,
+            original_rendered,
+            dir_params,
+            ignored_keys,
+            result,
+            all_manifest_related_vars,
         )
 
         # Collect env mappings for operator manifest cross-ref
@@ -298,12 +331,15 @@ def _process_discover_overlays(
                     continue
                 probe_rendered = kustomize_build(tmp_overlay)
         except RuntimeError as e:
-            result.findings.append(Finding(
-                severity="info",
-                file=str(overlay_dir.relative_to(root)),
-                line=0, image="",
-                message=f"kustomize build failed for overlay: {e}",
-            ))
+            result.findings.append(
+                Finding(
+                    severity="info",
+                    file=str(overlay_dir.relative_to(root)),
+                    line=0,
+                    image="",
+                    message=f"kustomize build failed for overlay: {e}",
+                )
+            )
             continue
 
         images_with_locations = extract_all_images(probe_rendered, ignored_image_patterns)
@@ -312,30 +348,40 @@ def _process_discover_overlays(
                 continue
             result.passed = False
             loc_str = ", ".join(locations) if locations else "unknown"
-            result.findings.append(Finding(
-                severity="blocker",
-                file=str(overlay_dir.relative_to(root)),
-                line=0,
-                image=img,
-                message=f"Hardcoded image '{img}' not sourced from params.env "
-                        f"(found in {loc_str}). Will not be mirrored in disconnected.",
-            ))
+            result.findings.append(
+                Finding(
+                    severity="blocker",
+                    file=str(overlay_dir.relative_to(root)),
+                    line=0,
+                    image=img,
+                    message=f"Hardcoded image '{img}' not sourced from params.env "
+                    f"(found in {loc_str}). Will not be mirrored in disconnected.",
+                )
+            )
 
         try:
             original_rendered = kustomize_build(overlay_dir)
         except RuntimeError as e:
-            result.findings.append(Finding(
-                severity="info",
-                file=str(overlay_dir.relative_to(root)),
-                line=0, image="",
-                message=f"kustomize build failed for original overlay, "
-                        f"using probe output for wiring analysis: {e}",
-            ))
+            result.findings.append(
+                Finding(
+                    severity="info",
+                    file=str(overlay_dir.relative_to(root)),
+                    line=0,
+                    image="",
+                    message=f"kustomize build failed for original overlay, "
+                    f"using probe output for wiring analysis: {e}",
+                )
+            )
             original_rendered = probe_rendered
 
         _check_wiring(
-            overlay_dir, root, original_rendered, overlay_params,
-            ignored_keys, result, all_manifest_related_vars,
+            overlay_dir,
+            root,
+            original_rendered,
+            overlay_params,
+            ignored_keys,
+            result,
+            all_manifest_related_vars,
         )
 
         # Collect env mappings for operator manifest cross-ref
@@ -346,18 +392,27 @@ def _process_discover_overlays(
     return total_overlays
 
 
-def run(repo_root: str, manifest_env_vars: set[str] | None = None,
-        production_scope=None, extra_filenames: list[str] | None = None,
-        **_kwargs) -> RuleResult:
+def run(
+    repo_root: str,
+    manifest_env_vars: set[str] | None = None,
+    production_scope=None,
+    extra_filenames: list[str] | None = None,
+    **_kwargs,
+) -> RuleResult:
     root = Path(repo_root)
     result = RuleResult(rule=RULE_NAME)
 
     if _is_operator_repo(root):
-        result.findings.append(Finding(
-            severity="info", file="", line=0, image="",
-            message="Operator repo detected. params-env-wiring checks are not applicable — "
-                    "use validate-related-images.sh for operator-level validation.",
-        ))
+        result.findings.append(
+            Finding(
+                severity="info",
+                file="",
+                line=0,
+                image="",
+                message="Operator repo detected. params-env-wiring checks are not applicable — "
+                "use validate-related-images.sh for operator-level validation.",
+            )
+        )
         return result
 
     manifest_source = (
@@ -377,11 +432,16 @@ def run(repo_root: str, manifest_env_vars: set[str] | None = None,
         return result
 
     if not kustomize_available():
-        result.findings.append(Finding(
-            severity="info", file="", line=0, image="",
-            message="kustomize not found on PATH. Skipping params.env wiring checks. "
-                    "Install kustomize for full validation.",
-        ))
+        result.findings.append(
+            Finding(
+                severity="info",
+                file="",
+                line=0,
+                image="",
+                message="kustomize not found on PATH. Skipping params.env wiring checks. "
+                "Install kustomize for full validation.",
+            )
+        )
         return result
 
     ignored_keys: set[str] = set()
@@ -397,8 +457,12 @@ def run(repo_root: str, manifest_env_vars: set[str] | None = None,
             if not source_dir.is_dir():
                 continue
             total_overlays += _process_manifest_source_folder(
-                source_dir, root, ignored_keys, result,
-                all_repo_params, all_manifest_related_vars,
+                source_dir,
+                root,
+                ignored_keys,
+                result,
+                all_repo_params,
+                all_manifest_related_vars,
                 env_mappings_set,
                 overlay_dirs=kustomize_overlay_dirs,
                 filenames=filenames,
@@ -408,8 +472,9 @@ def run(repo_root: str, manifest_env_vars: set[str] | None = None,
             filtered = []
             for o in overlays:
                 rel = o.relative_to(root)
-                if any(rel == Path(d) or rel.is_relative_to(Path(d))
-                       for d in kustomize_overlay_dirs):
+                if any(
+                    rel == Path(d) or rel.is_relative_to(Path(d)) for d in kustomize_overlay_dirs
+                ):
                     filtered.append(o)
             if filtered:
                 overlays = filtered
@@ -419,8 +484,12 @@ def run(repo_root: str, manifest_env_vars: set[str] | None = None,
                     if (entry_dir / "kustomization.yaml").exists() and entry_dir not in overlays:
                         overlays.append(entry_dir)
         total_overlays = _process_discover_overlays(
-            overlays, root, ignored_keys, result,
-            all_repo_params, all_manifest_related_vars,
+            overlays,
+            root,
+            ignored_keys,
+            result,
+            all_repo_params,
+            all_manifest_related_vars,
             env_mappings_set,
             filenames=filenames,
         )
@@ -429,53 +498,78 @@ def run(repo_root: str, manifest_env_vars: set[str] | None = None,
     go_env_vars = find_go_related_image_envs(root)
 
     for var in sorted(all_manifest_related_vars - go_env_vars):
-        result.findings.append(Finding(
-            severity="info",
-            file="", line=0, image="",
-            message=f"RELATED_IMAGE var '{var}' is in rendered manifests but Go code "
-                    f"never calls os.Getenv for it. Controller may ignore this image.",
-        ))
+        result.findings.append(
+            Finding(
+                severity="info",
+                file="",
+                line=0,
+                image="",
+                message=f"RELATED_IMAGE var '{var}' is in rendered manifests but Go code "
+                f"never calls os.Getenv for it. Controller may ignore this image.",
+            )
+        )
 
     for var in sorted(go_env_vars - all_manifest_related_vars):
         result.passed = False
-        result.findings.append(Finding(
-            severity="blocker",
-            file="", line=0, image="",
-            message=f"Go code calls os.Getenv(\"{var}\") but this var is not in "
-                    f"rendered manifests. Controller expects an image that won't "
-                    f"be injected in disconnected environments.",
-        ))
+        result.findings.append(
+            Finding(
+                severity="blocker",
+                file="",
+                line=0,
+                image="",
+                message=f'Go code calls os.Getenv("{var}") but this var is not in '
+                f"rendered manifests. Controller expects an image that won't "
+                f"be injected in disconnected environments.",
+            )
+        )
 
     # --- Operator manifest cross-reference ---
     if manifest_env_vars is not None:
         for env_name in sorted(env_mappings_set):
             if env_name.startswith("RELATED_IMAGE_") and env_name not in manifest_env_vars:
                 result.passed = False
-                result.findings.append(Finding(
-                    severity="blocker",
-                    file="", line=0, image="",
-                    message=f"RELATED_IMAGE var '{env_name}' mapped from params.env is not "
-                            f"in the operator manifest. Operator won't inject this image "
-                            f"in disconnected environments.",
-                ))
+                result.findings.append(
+                    Finding(
+                        severity="blocker",
+                        file="",
+                        line=0,
+                        image="",
+                        message=f"RELATED_IMAGE var '{env_name}' mapped from params.env is not "
+                        f"in the operator manifest. Operator won't inject this image "
+                        f"in disconnected environments.",
+                    )
+                )
 
         for env_name in sorted(env_mappings_set - manifest_env_vars):
             if not env_name.startswith("RELATED_IMAGE_"):
-                result.findings.append(Finding(
-                    severity="info",
-                    file="", line=0, image="",
-                    message=f"params.env-mapped var '{env_name}' not in operator manifest. "
-                            f"May be stale or renamed.",
-                ))
+                result.findings.append(
+                    Finding(
+                        severity="info",
+                        file="",
+                        line=0,
+                        image="",
+                        message=f"params.env-mapped var '{env_name}' not in operator manifest. "
+                        f"May be stale or renamed.",
+                    )
+                )
 
     # --- Summary ---
-    result.findings.insert(0, Finding(
-        severity="info", file="", line=0, image="",
-        message=f"Repo uses params.env pattern. Found {total_overlays} overlay(s) with "
-                f"{len(all_repo_params)} image key(s)."
-                + (f" Cross-referenced against {len(manifest_env_vars)} operator manifest vars."
-                   if manifest_env_vars is not None else ""),
-    ))
+    result.findings.insert(
+        0,
+        Finding(
+            severity="info",
+            file="",
+            line=0,
+            image="",
+            message=f"Repo uses params.env pattern. Found {total_overlays} overlay(s) with "
+            f"{len(all_repo_params)} image key(s)."
+            + (
+                f" Cross-referenced against {len(manifest_env_vars)} operator manifest vars."
+                if manifest_env_vars is not None
+                else ""
+            ),
+        ),
+    )
 
     return result
 
@@ -491,17 +585,27 @@ def detect_params_env(repo_root: Path, extra_filenames: list[str] | None = None)
 
 
 if __name__ == "__main__":
-    import sys
     import json
+    import sys
 
     repo = sys.argv[1] if len(sys.argv) > 1 else "."
     r = run(repo)
-    print(json.dumps({
-        "rule": r.rule,
-        "passed": r.passed,
-        "findings": [
-            {"severity": f.severity, "file": f.file, "line": f.line,
-             "image": f.image, "message": f.message}
-            for f in r.findings
-        ],
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "rule": r.rule,
+                "passed": r.passed,
+                "findings": [
+                    {
+                        "severity": f.severity,
+                        "file": f.file,
+                        "line": f.line,
+                        "image": f.image,
+                        "message": f.message,
+                    }
+                    for f in r.findings
+                ],
+            },
+            indent=2,
+        )
+    )

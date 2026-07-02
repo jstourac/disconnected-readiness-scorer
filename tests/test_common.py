@@ -5,10 +5,10 @@ from pathlib import Path
 import pytest
 
 from rules.common import (
+    NON_REGISTRY_DOMAINS,
     ArchAnalyzerResult,
     ConfigError,
     Finding,
-    NON_REGISTRY_DOMAINS,
     ProductionScope,
     RuleResult,
     Severity,
@@ -38,7 +38,9 @@ class TestNonRegistryDomains:
 
 class TestFinding:
     def test_fields(self):
-        f = Finding(severity="blocker", file="foo.go", line=10, image="quay.io/x:latest", message="bad tag")
+        f = Finding(
+            severity="blocker", file="foo.go", line=10, image="quay.io/x:latest", message="bad tag"
+        )
         assert f.severity == "blocker"
         assert f.file == "foo.go"
         assert f.line == 10
@@ -103,19 +105,24 @@ class TestRuleResult:
 class TestArchAnalyzerResult:
     def test_from_dict_full(self):
         data = {
-            "dockerfiles": [{
-                "path": "Dockerfile",
-                "copy_instructions": [
-                    {"original_sources": ["src", "pkg"], "manifest_hint": False},
-                    {"original_sources": ["config"], "manifest_hint": True},
-                ],
-                "build_commands": [{"entry_point": "cmd/main"}],
-            }],
+            "dockerfiles": [
+                {
+                    "path": "Dockerfile",
+                    "copy_instructions": [
+                        {"original_sources": ["src", "pkg"], "manifest_hint": False},
+                        {"original_sources": ["config"], "manifest_hint": True},
+                    ],
+                    "build_commands": [{"entry_point": "cmd/main"}],
+                }
+            ],
             "kustomize_overlay_refs": [
                 {"overlay_path": "overlays/odh", "file_path": "config/base/deploy.yaml"},
             ],
             "kustomize_components": [
-                {"support_file": "internal/components/kserve/support.go", "overlay_paths": ["overlays/odh"]},
+                {
+                    "support_file": "internal/components/kserve/support.go",
+                    "overlay_paths": ["overlays/odh"],
+                },
             ],
         }
         result = ArchAnalyzerResult.from_dict(data)
@@ -139,24 +146,34 @@ class TestArchAnalyzerResult:
         assert result.kustomize_components == []
 
     def test_from_dict_sources_fallback(self):
-        data = {"dockerfiles": [{
-            "path": "Dockerfile",
-            "copy_instructions": [
-                {"sources": ["maas-api/deploy"], "destination": "/maas-api/deploy"},
-            ],
-        }]}
+        data = {
+            "dockerfiles": [
+                {
+                    "path": "Dockerfile",
+                    "copy_instructions": [
+                        {"sources": ["maas-api/deploy"], "destination": "/maas-api/deploy"},
+                    ],
+                }
+            ]
+        }
         result = ArchAnalyzerResult.from_dict(data)
         ci = result.dockerfiles[0].copy_instructions[0]
         assert ci.original_sources == ["maas-api/deploy"]
 
     def test_from_dict_original_sources_takes_precedence(self):
-        data = {"dockerfiles": [{
-            "path": "Dockerfile",
-            "copy_instructions": [{
-                "sources": ["/app/binary"],
-                "original_sources": ["cmd/", "pkg/"],
-            }],
-        }]}
+        data = {
+            "dockerfiles": [
+                {
+                    "path": "Dockerfile",
+                    "copy_instructions": [
+                        {
+                            "sources": ["/app/binary"],
+                            "original_sources": ["cmd/", "pkg/"],
+                        }
+                    ],
+                }
+            ]
+        }
         result = ArchAnalyzerResult.from_dict(data)
         ci = result.dockerfiles[0].copy_instructions[0]
         assert ci.original_sources == ["cmd/", "pkg/"]
@@ -170,6 +187,7 @@ class TestArchAnalyzerResult:
 
     def test_from_fixture_file(self):
         from tests.conftest import load_arch_fixture
+
         result = load_arch_fixture("go_operator")
         assert len(result.dockerfiles) == 1
         assert result.dockerfiles[0].path == "Dockerfile"
@@ -180,13 +198,15 @@ class TestArchAnalyzerResult:
 
 class TestBuildOverlayFileMap:
     def test_valid_data(self, tmp_path):
-        arch_data = ArchAnalyzerResult.from_dict({
-            "kustomize_overlay_refs": [
-                {"overlay_path": "overlays/odh", "file_path": "config/base/deploy.yaml"},
-                {"overlay_path": "overlays/odh", "file_path": "config/base/svc.yaml"},
-                {"overlay_path": "overlays/dev", "file_path": "config/dev/patch.yaml"},
-            ]
-        })
+        arch_data = ArchAnalyzerResult.from_dict(
+            {
+                "kustomize_overlay_refs": [
+                    {"overlay_path": "overlays/odh", "file_path": "config/base/deploy.yaml"},
+                    {"overlay_path": "overlays/odh", "file_path": "config/base/svc.yaml"},
+                    {"overlay_path": "overlays/dev", "file_path": "config/dev/patch.yaml"},
+                ]
+            }
+        )
         result = build_overlay_file_map(arch_data, tmp_path)
         assert len(result) == 2
         assert len(result["overlays/odh"]) == 2
@@ -200,13 +220,15 @@ class TestBuildOverlayFileMap:
         assert build_overlay_file_map(ArchAnalyzerResult(), Path(".")) == {}
 
     def test_missing_keys_skipped(self):
-        arch_data = ArchAnalyzerResult.from_dict({
-            "kustomize_overlay_refs": [
-                {"overlay_path": "overlays/odh"},
-                {"file_path": "config/base/deploy.yaml"},
-                {},
-            ]
-        })
+        arch_data = ArchAnalyzerResult.from_dict(
+            {
+                "kustomize_overlay_refs": [
+                    {"overlay_path": "overlays/odh"},
+                    {"file_path": "config/base/deploy.yaml"},
+                    {},
+                ]
+            }
+        )
         assert build_overlay_file_map(arch_data, Path(".")) == {}
 
     def test_empty_refs_list(self):

@@ -1,18 +1,20 @@
 """Direct unit tests for params_env_utils extraction functions."""
 
 from rules.params_env_utils import (
+    PROBE_SENTINEL,
     extract_all_images,
     extract_configmap_key_refs,
-    extract_kustomize_replacement_keys,
     extract_env_configmap_mappings,
+    extract_kustomize_replacement_keys,
     parse_params_env,
-    PROBE_SENTINEL,
 )
 
 
 class TestExtractAllImages:
     def test_finds_tagged_image(self):
-        rendered = "---\nkind: Deployment\nmetadata:\n  name: app\nspec:\n  image: quay.io/org/img:v1\n"
+        rendered = (
+            "---\nkind: Deployment\nmetadata:\n  name: app\nspec:\n  image: quay.io/org/img:v1\n"
+        )
         result = extract_all_images(rendered, [])
         assert "quay.io/org/img:v1" in result
 
@@ -33,7 +35,9 @@ class TestExtractAllImages:
         assert PROBE_SENTINEL in result
 
     def test_tracks_resource_location(self):
-        rendered = "---\nkind: Deployment\nmetadata:\n  name: myapp\nspec:\n  image: quay.io/org/img:v1\n"
+        rendered = (
+            "---\nkind: Deployment\nmetadata:\n  name: myapp\nspec:\n  image: quay.io/org/img:v1\n"
+        )
         result = extract_all_images(rendered, [])
         assert result.get("quay.io/org/img:v1") == ["Deployment/myapp"]
 
@@ -87,11 +91,7 @@ class TestExtractConfigmapKeyRefs:
         assert extract_configmap_key_refs("kind: ConfigMap\n") == set()
 
     def test_reversed_name_before_key(self):
-        rendered = (
-            "        configMapKeyRef:\n"
-            "          name: params\n"
-            "          key: my-component\n"
-        )
+        rendered = "        configMapKeyRef:\n          name: params\n          key: my-component\n"
         assert extract_configmap_key_refs(rendered) == {"my-component"}
 
 

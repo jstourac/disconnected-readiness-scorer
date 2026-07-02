@@ -4,16 +4,16 @@ from pathlib import Path
 from unittest.mock import patch
 
 from rules.common import ProductionScope
-from rules.params_env import run, detect_params_env
+from rules.params_env import detect_params_env, run
 from rules.params_env_utils import (
-    parse_params_env,
     _looks_like_image,
     discover_overlays,
     find_go_related_image_envs,
+    parse_params_env,
 )
 
-
 # --- _looks_like_image ---
+
 
 class TestLooksLikeImage:
     def test_registry_image(self):
@@ -33,6 +33,7 @@ class TestLooksLikeImage:
 
 
 # --- parse_params_env ---
+
 
 class TestParseParamsEnv:
     def test_basic(self, tmp_path):
@@ -63,6 +64,7 @@ class TestParseParamsEnv:
 
 # --- discover_overlays ---
 
+
 class TestDiscoverOverlays:
     def test_finds_overlay_with_params_env_and_kustomization(self, tmp_path):
         overlay = tmp_path / "config" / "overlays" / "default"
@@ -87,9 +89,8 @@ class TestDiscoverOverlays:
         assert discover_overlays(tmp_path) == []
 
 
-
-
 # --- find_go_related_image_envs ---
+
 
 class TestFindGoRelatedImageEnvs:
     def test_finds_getenv(self, tmp_path):
@@ -107,6 +108,7 @@ class TestFindGoRelatedImageEnvs:
 
 
 # --- detect_params_env ---
+
 
 class TestDetectParamsEnvPattern:
     def test_detects_params_env(self, tmp_path):
@@ -135,6 +137,7 @@ class TestDetectParamsEnvPattern:
 
 # --- run ---
 
+
 class TestCheckParamsEnvPattern:
     def _make_overlay(self, tmp_path, params_content, kustomization_content="resources: []\n"):
         overlay = tmp_path / "config" / "default"
@@ -158,9 +161,11 @@ class TestCheckParamsEnvPattern:
             "---\nkind: Deployment\nmetadata:\n  name: myapp\n"
             "spec:\n  image: registry.io/hardcoded/image:v1\n"
         )
-        with patch("rules.params_env.kustomize_available", return_value=True), \
-             patch("rules.params_env.kustomize_build", return_value=rendered_with_hardcoded), \
-             patch("rules.params_env.create_probe_overlay", return_value=tmp_path):
+        with (
+            patch("rules.params_env.kustomize_available", return_value=True),
+            patch("rules.params_env.kustomize_build", return_value=rendered_with_hardcoded),
+            patch("rules.params_env.create_probe_overlay", return_value=tmp_path),
+        ):
             result = run(str(tmp_path))
         assert result.passed is False
         blockers = [f for f in result.findings if f.severity == "blocker"]
@@ -171,8 +176,10 @@ class TestCheckParamsEnvPattern:
         go_file = tmp_path / "main.go"
         go_file.write_text('package main\nvar x = os.Getenv("RELATED_IMAGE_ORPHAN")\n')
 
-        with patch("rules.params_env.kustomize_available", return_value=True), \
-             patch("rules.params_env.kustomize_build", return_value="---\n"):
+        with (
+            patch("rules.params_env.kustomize_available", return_value=True),
+            patch("rules.params_env.kustomize_build", return_value="---\n"),
+        ):
             result = run(str(tmp_path))
         assert result.passed is False
         blockers = [f for f in result.findings if f.severity == "blocker"]
@@ -191,8 +198,10 @@ class TestCheckParamsEnvPattern:
             "          key: IMG\n"
             "          name: params\n"
         )
-        with patch("rules.params_env.kustomize_available", return_value=True), \
-             patch("rules.params_env.kustomize_build", return_value=rendered):
+        with (
+            patch("rules.params_env.kustomize_available", return_value=True),
+            patch("rules.params_env.kustomize_build", return_value=rendered),
+        ):
             result = run(
                 str(tmp_path),
                 manifest_env_vars={"RELATED_IMAGE_BAR"},
@@ -202,8 +211,8 @@ class TestCheckParamsEnvPattern:
         assert any("not in the operator manifest" in f.message for f in blockers)
 
 
-
 # --- run() dispatcher ---
+
 
 class TestRunDispatcher:
     def test_dispatches_to_params_env(self, tmp_path):
@@ -212,14 +221,17 @@ class TestRunDispatcher:
         (overlay / "params.env").write_text("IMG=quay.io/org/img@sha256:" + "a" * 64 + "\n")
         (overlay / "kustomization.yaml").write_text("resources: []\n")
 
-        with patch("rules.params_env.kustomize_available", return_value=True), \
-             patch("rules.params_env.kustomize_build", return_value="---\n"):
+        with (
+            patch("rules.params_env.kustomize_available", return_value=True),
+            patch("rules.params_env.kustomize_build", return_value="---\n"),
+        ):
             result = run(str(tmp_path))
         assert result.rule == "params-env-wiring"
         assert any("params.env pattern" in f.message for f in result.findings)
 
 
 # --- manifest_source flow ---
+
 
 class TestManifestSourceFlow:
     def _make_manifest_source(self, tmp_path, overlays_config):
@@ -246,12 +258,15 @@ class TestManifestSourceFlow:
 
     def test_probe_detects_hardcoded_in_manifest_source(self, tmp_path):
         """When manifest_source is set, hardcoded images in kustomize dirs are detected."""
-        manifest_dir = self._make_manifest_source(tmp_path, {
-            "base": {
-                "params_env": "IMG=quay.io/org/img@sha256:" + "a" * 64 + "\n",
-                "kustomization": "resources: []\n",
+        self._make_manifest_source(
+            tmp_path,
+            {
+                "base": {
+                    "params_env": "IMG=quay.io/org/img@sha256:" + "a" * 64 + "\n",
+                    "kustomization": "resources: []\n",
+                },
             },
-        })
+        )
 
         hardcoded_manifest = (
             "---\nkind: Deployment\nmetadata:\n  name: myapp\n"
@@ -261,22 +276,29 @@ class TestManifestSourceFlow:
             method="test",
             manifest_source="manifests",
         )
-        with patch("rules.params_env.kustomize_available", return_value=True), \
-             patch("rules.params_env.kustomize_build", return_value=hardcoded_manifest):
+        with (
+            patch("rules.params_env.kustomize_available", return_value=True),
+            patch("rules.params_env.kustomize_build", return_value=hardcoded_manifest),
+        ):
             result = run(str(tmp_path), production_scope=scope)
         assert result.passed is False
         blockers = [f for f in result.findings if f.severity == "blocker"]
-        assert any("Hardcoded image" in f.message and "registry.io/hardcoded/image:v1" in f.message
-                    for f in blockers)
+        assert any(
+            "Hardcoded image" in f.message and "registry.io/hardcoded/image:v1" in f.message
+            for f in blockers
+        )
 
     def test_probe_sentinel_replaces_params_env_images(self, tmp_path):
         """Images wired through params.env should become sentinels and NOT be flagged."""
-        manifest_dir = self._make_manifest_source(tmp_path, {
-            "base": {
-                "params_env": "IMG=quay.io/org/wired-img@sha256:" + "a" * 64 + "\n",
-                "kustomization": "resources: []\n",
+        self._make_manifest_source(
+            tmp_path,
+            {
+                "base": {
+                    "params_env": "IMG=quay.io/org/wired-img@sha256:" + "a" * 64 + "\n",
+                    "kustomization": "resources: []\n",
+                },
             },
-        })
+        )
 
         scope = ProductionScope(
             method="test",
@@ -287,19 +309,24 @@ class TestManifestSourceFlow:
             "---\nkind: Deployment\nmetadata:\n  name: myapp\n"
             "spec:\n  image: probe.test/verify-params-env:check\n"
         )
-        with patch("rules.params_env.kustomize_available", return_value=True), \
-             patch("rules.params_env.kustomize_build", return_value=sentinel_manifest):
+        with (
+            patch("rules.params_env.kustomize_available", return_value=True),
+            patch("rules.params_env.kustomize_build", return_value=sentinel_manifest),
+        ):
             result = run(str(tmp_path), production_scope=scope)
         blockers = [f for f in result.findings if f.severity == "blocker"]
         assert not any("Hardcoded image" in f.message for f in blockers)
 
     def test_no_params_env_flags_all_images(self, tmp_path):
         """Kustomize dirs without params.env: all images are hardcoded."""
-        manifest_dir = self._make_manifest_source(tmp_path, {
-            "base": {
-                "kustomization": "resources: []\n",
+        self._make_manifest_source(
+            tmp_path,
+            {
+                "base": {
+                    "kustomization": "resources: []\n",
+                },
             },
-        })
+        )
         # Need a params.env somewhere so discover_overlays finds the repo
         other = tmp_path / "other"
         other.mkdir()
@@ -314,8 +341,10 @@ class TestManifestSourceFlow:
             method="test",
             manifest_source="manifests",
         )
-        with patch("rules.params_env.kustomize_available", return_value=True), \
-             patch("rules.params_env.kustomize_build", return_value=hardcoded):
+        with (
+            patch("rules.params_env.kustomize_available", return_value=True),
+            patch("rules.params_env.kustomize_build", return_value=hardcoded),
+        ):
             result = run(str(tmp_path), production_scope=scope)
         assert result.passed is False
         blockers = [f for f in result.findings if f.severity == "blocker"]
@@ -328,11 +357,14 @@ class TestManifestSourceFlow:
         (overlay / "params.env").write_text("IMG=quay.io/org/img@sha256:" + "a" * 64 + "\n")
         (overlay / "kustomization.yaml").write_text("resources: []\n")
 
-        with patch("rules.params_env.kustomize_available", return_value=True), \
-             patch("rules.params_env.kustomize_build", return_value="---\n"):
+        with (
+            patch("rules.params_env.kustomize_available", return_value=True),
+            patch("rules.params_env.kustomize_build", return_value="---\n"),
+        ):
             result = run(str(tmp_path))
         assert result.rule == "params-env-wiring"
         assert any("params.env pattern" in f.message for f in result.findings)
+
 
 class TestKustomizeOverlayConfig:
     def _make_repo_with_base_and_overlays(self, tmp_path):
@@ -345,21 +377,13 @@ class TestKustomizeOverlayConfig:
 
         overlay_odh = config_dir / "overlays" / "odh"
         overlay_odh.mkdir(parents=True)
-        (overlay_odh / "params.env").write_text(
-            "IMG=quay.io/org/img@sha256:" + "a" * 64 + "\n"
-        )
-        (overlay_odh / "kustomization.yaml").write_text(
-            "resources:\n- ../../manager\n"
-        )
+        (overlay_odh / "params.env").write_text("IMG=quay.io/org/img@sha256:" + "a" * 64 + "\n")
+        (overlay_odh / "kustomization.yaml").write_text("resources:\n- ../../manager\n")
 
         overlay_rhoai = config_dir / "overlays" / "rhoai"
         overlay_rhoai.mkdir(parents=True)
-        (overlay_rhoai / "params.env").write_text(
-            "IMG=quay.io/org/img@sha256:" + "b" * 64 + "\n"
-        )
-        (overlay_rhoai / "kustomization.yaml").write_text(
-            "resources:\n- ../../manager\n"
-        )
+        (overlay_rhoai / "params.env").write_text("IMG=quay.io/org/img@sha256:" + "b" * 64 + "\n")
+        (overlay_rhoai / "kustomization.yaml").write_text("resources:\n- ../../manager\n")
         return config_dir
 
     def test_overlay_config_filters_probe_dirs(self, tmp_path):
@@ -382,13 +406,14 @@ class TestKustomizeOverlayConfig:
             build_calls.append(str(kdir))
             return hardcoded
 
-        with patch("rules.params_env.kustomize_available", return_value=True), \
-             patch("rules.params_env.kustomize_build", side_effect=tracking_build):
-            result = run(str(tmp_path), production_scope=scope)
+        with (
+            patch("rules.params_env.kustomize_available", return_value=True),
+            patch("rules.params_env.kustomize_build", side_effect=tracking_build),
+        ):
+            run(str(tmp_path), production_scope=scope)
 
         # Probe calls use a temp copy (path contains "verify-params-env-")
-        probe_dirs = [Path(p).name for p in build_calls
-                      if "verify-params-env-" in p]
+        probe_dirs = [Path(p).name for p in build_calls if "verify-params-env-" in p]
         assert "odh" in probe_dirs
         assert "manager" not in probe_dirs
         assert "rhoai" not in probe_dirs
@@ -412,9 +437,11 @@ class TestKustomizeOverlayConfig:
             build_calls.append(str(kdir))
             return hardcoded
 
-        with patch("rules.params_env.kustomize_available", return_value=True), \
-             patch("rules.params_env.kustomize_build", side_effect=tracking_build):
-            result = run(str(tmp_path), production_scope=scope)
+        with (
+            patch("rules.params_env.kustomize_available", return_value=True),
+            patch("rules.params_env.kustomize_build", side_effect=tracking_build),
+        ):
+            run(str(tmp_path), production_scope=scope)
 
         built_dirs = [Path(p).name for p in build_calls]
         assert "manager" in built_dirs
@@ -436,9 +463,11 @@ class TestKustomizeOverlayConfig:
             build_calls.append(str(kdir))
             return "---\n"
 
-        with patch("rules.params_env.kustomize_available", return_value=True), \
-             patch("rules.params_env.kustomize_build", side_effect=tracking_build):
-            result = run(str(tmp_path), production_scope=scope)
+        with (
+            patch("rules.params_env.kustomize_available", return_value=True),
+            patch("rules.params_env.kustomize_build", side_effect=tracking_build),
+        ):
+            run(str(tmp_path), production_scope=scope)
 
         # Probe loop should not have built the nonexistent dir.
         # Wiring loop still runs on dirs with params.env (odh, rhoai) — that's expected.
@@ -448,6 +477,7 @@ class TestKustomizeOverlayConfig:
 
 
 # --- params_env_filenames config ---
+
 
 class TestParamsEnvFilenames:
     """Tests for configurable env filename support."""
@@ -461,8 +491,10 @@ class TestParamsEnvFilenames:
 
     def test_discover_overlays_finds_extra_filename(self, tmp_path):
         from rules.params_env_utils import discover_overlays
-        self._make_overlay(tmp_path, "overlay-latest", "params-latest.env",
-                           "IMG=quay.io/org/img:tag\n")
+
+        self._make_overlay(
+            tmp_path, "overlay-latest", "params-latest.env", "IMG=quay.io/org/img:tag\n"
+        )
         # Default (params.env only) misses it
         assert discover_overlays(tmp_path) == []
         # With extra filename, found
@@ -472,6 +504,7 @@ class TestParamsEnvFilenames:
 
     def test_discover_overlays_deduplicates_overlay_with_both_files(self, tmp_path):
         from rules.params_env_utils import discover_overlays
+
         d = tmp_path / "overlay"
         d.mkdir()
         (d / "params.env").write_text("IMG=quay.io/org/img:tag\n")
@@ -481,31 +514,37 @@ class TestParamsEnvFilenames:
         assert result == [d]
 
     def test_detect_params_env_finds_extra_filename_via_extra_filenames(self, tmp_path):
-        self._make_overlay(tmp_path, "overlay-latest", "params-latest.env",
-                           "IMG=quay.io/org/img@sha256:abc\n")
+        self._make_overlay(
+            tmp_path, "overlay-latest", "params-latest.env", "IMG=quay.io/org/img@sha256:abc\n"
+        )
         assert detect_params_env(tmp_path, extra_filenames=["params-latest.env"]) is True
 
     def test_detect_params_env_ignores_extra_filename_without_extra_filenames(self, tmp_path):
-        self._make_overlay(tmp_path, "overlay-latest", "params-latest.env",
-                           "IMG=quay.io/org/img@sha256:abc\n")
+        self._make_overlay(
+            tmp_path, "overlay-latest", "params-latest.env", "IMG=quay.io/org/img@sha256:abc\n"
+        )
         assert detect_params_env(tmp_path) is False
 
     def test_get_filenames_extends_default(self):
         from rules.params_env import _get_filenames
+
         result = _get_filenames(["params-latest.env"])
         assert result == ["params.env", "params-latest.env"]
 
     def test_get_filenames_no_duplicates(self):
         from rules.params_env import _get_filenames
+
         result = _get_filenames(["params.env", "params-latest.env"])
         assert result == ["params.env", "params-latest.env"]
 
     def test_get_filenames_empty(self):
         from rules.params_env import _get_filenames
+
         assert _get_filenames([]) == ["params.env"]
 
     def test_find_params_env_files_with_extra_filename(self, tmp_path):
         from rules.params_env_utils import find_params_env_files
+
         d = tmp_path / "overlay"
         d.mkdir()
         (d / "params.env").write_text("IMG=quay.io/org/img:tag\n")
@@ -519,13 +558,13 @@ class TestParamsEnvFilenames:
         """run() reads params-latest.env when extra_filenames is passed."""
         overlay = tmp_path / "config" / "default"
         overlay.mkdir(parents=True)
-        (overlay / "params-latest.env").write_text(
-            "IMG_LATEST=quay.io/org/img-latest@sha256:abc\n"
-        )
+        (overlay / "params-latest.env").write_text("IMG_LATEST=quay.io/org/img-latest@sha256:abc\n")
         (overlay / "kustomization.yaml").write_text("resources: []\n")
 
-        with patch("rules.params_env.kustomize_available", return_value=True), \
-             patch("rules.params_env.kustomize_build", return_value="---\n"):
+        with (
+            patch("rules.params_env.kustomize_available", return_value=True),
+            patch("rules.params_env.kustomize_build", return_value="---\n"),
+        ):
             result = run(str(tmp_path), extra_filenames=["params-latest.env"])
 
         summary = result.findings[0].message

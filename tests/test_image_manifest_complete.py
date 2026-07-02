@@ -1,12 +1,15 @@
 """Tests for rules/image_manifest_complete.py"""
 
-from pathlib import Path
-
 from rules.image_manifest_complete import (
-    normalize_image, detect_image_pattern,
-    extract_related_image_vars, extract_static_related_images,
-    scan_for_image_refs, check_env_var_pattern, check_static_csv_pattern, run,
+    check_env_var_pattern,
+    check_static_csv_pattern,
     check_unmanaged_images,
+    detect_image_pattern,
+    extract_related_image_vars,
+    extract_static_related_images,
+    normalize_image,
+    run,
+    scan_for_image_refs,
 )
 
 
@@ -114,12 +117,7 @@ class TestExtractRelatedImageVars:
 class TestExtractStaticRelatedImages:
     def test_extracts_images(self, tmp_path):
         f = tmp_path / "csv.yaml"
-        f.write_text(
-            "spec:\n"
-            "  relatedImages:\n"
-            "    - name: img\n"
-            "      image: quay.io/org/img:v1\n"
-        )
+        f.write_text("spec:\n  relatedImages:\n    - name: img\n      image: quay.io/org/img:v1\n")
         result = extract_static_related_images(tmp_path)
         assert "quay.io/org/img" in result
 
@@ -132,12 +130,7 @@ class TestExtractStaticRelatedImages:
         vendor = tmp_path / "vendor"
         vendor.mkdir()
         f = vendor / "csv.yaml"
-        f.write_text(
-            "spec:\n"
-            "  relatedImages:\n"
-            "    - name: img\n"
-            "      image: quay.io/org/img:v1\n"
-        )
+        f.write_text("spec:\n  relatedImages:\n    - name: img\n      image: quay.io/org/img:v1\n")
         assert extract_static_related_images(tmp_path) == set()
 
 
@@ -203,9 +196,7 @@ class TestScanForImageRefsExpanded:
     def test_finds_go_short_decl(self, tmp_path):
         pkg = tmp_path / "pkg"
         pkg.mkdir()
-        (pkg / "img.go").write_text(
-            'img := "registry.redhat.io/rhoai/model-controller:v1"'
-        )
+        (pkg / "img.go").write_text('img := "registry.redhat.io/rhoai/model-controller:v1"')
         refs = scan_for_image_refs(tmp_path)
         assert len(refs) == 1
 
@@ -213,9 +204,7 @@ class TestScanForImageRefsExpanded:
         """Go path strings without dots in the domain should NOT match."""
         pkg = tmp_path / "pkg"
         pkg.mkdir()
-        (pkg / "paths.go").write_text(
-            'const path = "internal/controller/components"'
-        )
+        (pkg / "paths.go").write_text('const path = "internal/controller/components"')
         refs = scan_for_image_refs(tmp_path)
         assert len(refs) == 0
 
@@ -230,9 +219,7 @@ class TestScanForImageRefsExpanded:
         """Kubernetes API GroupVersions should NOT match as container images."""
         pkg = tmp_path / "pkg"
         pkg.mkdir()
-        (pkg / "api.go").write_text(
-            'gvr := "openshift.io/gateway-controller/v1"'
-        )
+        (pkg / "api.go").write_text('gvr := "openshift.io/gateway-controller/v1"')
         refs = scan_for_image_refs(tmp_path)
         assert len(refs) == 0
 
@@ -240,9 +227,7 @@ class TestScanForImageRefsExpanded:
         """domain/path assignments without tag or digest should NOT match."""
         pkg = tmp_path / "pkg"
         pkg.mkdir()
-        (pkg / "urls.go").write_text(
-            'url := "oauth2.googleapis.com/token/refresh"'
-        )
+        (pkg / "urls.go").write_text('url := "oauth2.googleapis.com/token/refresh"')
         refs = scan_for_image_refs(tmp_path)
         assert len(refs) == 0
 
@@ -275,12 +260,10 @@ class TestFileLevelAwareness:
         pkg = tmp_path / "pkg"
         pkg.mkdir()
         (pkg / "images.go").write_text(
-            'img := os.Getenv("RELATED_IMAGE_FOO")\n'
-            'image: quay.io/org/fallback:v1\n'
+            'img := os.Getenv("RELATED_IMAGE_FOO")\nimage: quay.io/org/fallback:v1\n'
         )
         result = check_env_var_pattern(tmp_path)
-        image_findings = [f for f in result.findings
-                          if f.image == "quay.io/org/fallback:v1"]
+        image_findings = [f for f in result.findings if f.image == "quay.io/org/fallback:v1"]
         assert len(image_findings) == 1
         assert image_findings[0].severity == "info"
         assert "file contains" in image_findings[0].message
@@ -290,12 +273,9 @@ class TestFileLevelAwareness:
         pkg = tmp_path / "pkg"
         pkg.mkdir()
         (pkg / "envvars.go").write_text('os.Getenv("RELATED_IMAGE_FOO")')
-        (pkg / "defaults.go").write_text(
-            'image: quay.io/org/img:v1'
-        )
+        (pkg / "defaults.go").write_text("image: quay.io/org/img:v1")
         result = check_env_var_pattern(tmp_path)
-        image_findings = [f for f in result.findings
-                          if f.image == "quay.io/org/img:v1"]
+        image_findings = [f for f in result.findings if f.image == "quay.io/org/img:v1"]
         assert len(image_findings) == 1
         assert image_findings[0].severity == "info"
         assert "sibling" in image_findings[0].message
@@ -321,8 +301,7 @@ class TestFileLevelAwareness:
         (deploy / "envvars.go").write_text('os.Getenv("RELATED_IMAGE_FOO")')
         (deploy / "config.yaml").write_text("image: quay.io/org/img:v1")
         result = check_env_var_pattern(tmp_path)
-        yaml_findings = [f for f in result.findings
-                         if f.file.endswith("config.yaml") and f.image]
+        yaml_findings = [f for f in result.findings if f.file.endswith("config.yaml") and f.image]
         for finding in yaml_findings:
             assert finding.severity == "blocker"
 
@@ -331,13 +310,11 @@ class TestFileLevelAwareness:
         pkg = tmp_path / "pkg"
         pkg.mkdir()
         (pkg / "images.go").write_text(
-            'os.Getenv("RELATED_IMAGE_FOO")\n'
-            'image: quay.io/org/fallback:v1\n'
+            'os.Getenv("RELATED_IMAGE_FOO")\nimage: quay.io/org/fallback:v1\n'
         )
         manifest = {"RELATED_IMAGE_FOO"}
         result = check_env_var_pattern(tmp_path, manifest_env_vars=manifest)
-        img_findings = [f for f in result.findings
-                        if f.image == "quay.io/org/fallback:v1"]
+        img_findings = [f for f in result.findings if f.image == "quay.io/org/fallback:v1"]
         assert len(img_findings) == 1
         assert img_findings[0].severity == "info"
 
@@ -346,13 +323,11 @@ class TestFileLevelAwareness:
         pkg = tmp_path / "pkg"
         pkg.mkdir()
         (pkg / "images.go").write_text(
-            'os.Getenv("RELATED_IMAGE_FOO")\n'
-            'image: quay.io/org/fallback:v1\n'
+            'os.Getenv("RELATED_IMAGE_FOO")\nimage: quay.io/org/fallback:v1\n'
         )
         manifest = {"RELATED_IMAGE_BAR"}
         result = check_env_var_pattern(tmp_path, manifest_env_vars=manifest)
-        img_findings = [f for f in result.findings
-                        if f.image == "quay.io/org/fallback:v1"]
+        img_findings = [f for f in result.findings if f.image == "quay.io/org/fallback:v1"]
         assert len(img_findings) == 1
         assert img_findings[0].severity == "blocker"
 
@@ -361,24 +336,21 @@ class TestFileLevelAwareness:
         pkg = tmp_path / "pkg"
         pkg.mkdir()
         (pkg / "envvars.go").write_text('os.Getenv("RELATED_IMAGE_FOO")')
-        (pkg / "defaults.go").write_text('image: quay.io/org/img:v1')
+        (pkg / "defaults.go").write_text("image: quay.io/org/img:v1")
         manifest = {"RELATED_IMAGE_OTHER"}
         result = check_env_var_pattern(tmp_path, manifest_env_vars=manifest)
-        img_findings = [f for f in result.findings
-                        if f.image == "quay.io/org/img:v1"]
+        img_findings = [f for f in result.findings if f.image == "quay.io/org/img:v1"]
         assert len(img_findings) == 1
         assert img_findings[0].severity == "blocker"
-
 
     def test_test_file_sibling_covers_image(self, tmp_path):
         """RELATED_IMAGE in a _test.go sibling covers the image (info)."""
         pkg = tmp_path / "pkg"
         pkg.mkdir()
         (pkg / "envvars_test.go").write_text('os.Getenv("RELATED_IMAGE_FOO")')
-        (pkg / "defaults.go").write_text('image: quay.io/org/img:v1')
+        (pkg / "defaults.go").write_text("image: quay.io/org/img:v1")
         result = check_env_var_pattern(tmp_path)
-        img_findings = [f for f in result.findings
-                        if f.image == "quay.io/org/img:v1"]
+        img_findings = [f for f in result.findings if f.image == "quay.io/org/img:v1"]
         assert len(img_findings) == 1
         assert img_findings[0].severity == "info"
 
@@ -387,11 +359,10 @@ class TestFileLevelAwareness:
         pkg = tmp_path / "pkg"
         pkg.mkdir()
         (pkg / "images.go").write_text(
-            'os.Getenv("RELATED_IMAGE_FOO")\n'
-            'image: quay.io/org/fallback:v1\n'
+            'os.Getenv("RELATED_IMAGE_FOO")\nimage: quay.io/org/fallback:v1\n'
         )
         binary = pkg / "broken.go"
-        binary.write_bytes(b'\x80\x81\x82\x83')
+        binary.write_bytes(b"\x80\x81\x82\x83")
         result = check_env_var_pattern(tmp_path)
         unreadable = [f for f in result.findings if "Could not read" in f.message]
         assert len(unreadable) == 1
@@ -447,12 +418,8 @@ class TestCheckEnvVarPattern:
     def test_var_not_in_manifest_is_blocker(self, tmp_path):
         pkg = tmp_path / "pkg"
         pkg.mkdir()
-        (pkg / "images.go").write_text(
-            'image: quay.io/org/img:v1  // RELATED_IMAGE_MISSING'
-        )
-        result = check_env_var_pattern(
-            tmp_path, manifest_env_vars={"RELATED_IMAGE_OTHER"}
-        )
+        (pkg / "images.go").write_text("image: quay.io/org/img:v1  // RELATED_IMAGE_MISSING")
+        result = check_env_var_pattern(tmp_path, manifest_env_vars={"RELATED_IMAGE_OTHER"})
         blockers = [f for f in result.findings if f.severity == "blocker"]
         assert len(blockers) >= 1
         assert result.passed is False
@@ -460,12 +427,8 @@ class TestCheckEnvVarPattern:
     def test_var_not_in_manifest_in_test_dir_is_blocker(self, tmp_path):
         test_dir = tmp_path / "test"
         test_dir.mkdir()
-        (test_dir / "helper.go").write_text(
-            'image: quay.io/org/img:v1  // RELATED_IMAGE_MISSING'
-        )
-        result = check_env_var_pattern(
-            tmp_path, manifest_env_vars={"RELATED_IMAGE_OTHER"}
-        )
+        (test_dir / "helper.go").write_text("image: quay.io/org/img:v1  // RELATED_IMAGE_MISSING")
+        result = check_env_var_pattern(tmp_path, manifest_env_vars={"RELATED_IMAGE_OTHER"})
         test_findings = [f for f in result.findings if f.file.startswith("test/")]
         assert all(f.severity == "blocker" for f in test_findings)
         assert result.passed is False
@@ -474,9 +437,7 @@ class TestCheckEnvVarPattern:
         pkg = tmp_path / "pkg"
         pkg.mkdir()
         (pkg / "images.go").write_text('"RELATED_IMAGE_STALE"')
-        result = check_env_var_pattern(
-            tmp_path, manifest_env_vars={"RELATED_IMAGE_OTHER"}
-        )
+        result = check_env_var_pattern(tmp_path, manifest_env_vars={"RELATED_IMAGE_OTHER"})
         blockers = [f for f in result.findings if f.severity == "blocker"]
         assert any("not in operator manifest" in f.message for f in blockers)
         assert result.passed is False
@@ -496,9 +457,7 @@ class TestCheckEnvVarPattern:
         pkg = tmp_path / "pkg"
         pkg.mkdir()
         (pkg / "images.go").write_text('"RELATED_IMAGE_FOO"')
-        result = check_env_var_pattern(
-            tmp_path, manifest_env_vars={"RELATED_IMAGE_FOO"}
-        )
+        result = check_env_var_pattern(tmp_path, manifest_env_vars={"RELATED_IMAGE_FOO"})
         assert result.passed is True
 
 
@@ -512,10 +471,7 @@ class TestCheckStaticCsvPattern:
     def test_missing_image_is_blocker(self, tmp_path):
         f = tmp_path / "csv.yaml"
         f.write_text(
-            "spec:\n"
-            "  relatedImages:\n"
-            "    - name: known\n"
-            "      image: quay.io/org/known:v1\n"
+            "spec:\n  relatedImages:\n    - name: known\n      image: quay.io/org/known:v1\n"
         )
         (tmp_path / "deploy.yaml").write_text("image: quay.io/org/missing:v1")
         result = check_static_csv_pattern(tmp_path)
@@ -526,10 +482,7 @@ class TestCheckStaticCsvPattern:
     def test_missing_image_in_test_dir_is_blocker(self, tmp_path):
         f = tmp_path / "csv.yaml"
         f.write_text(
-            "spec:\n"
-            "  relatedImages:\n"
-            "    - name: known\n"
-            "      image: quay.io/org/known:v1\n"
+            "spec:\n  relatedImages:\n    - name: known\n      image: quay.io/org/known:v1\n"
         )
         test_dir = tmp_path / "test"
         test_dir.mkdir()
@@ -541,12 +494,7 @@ class TestCheckStaticCsvPattern:
 
     def test_all_images_covered(self, tmp_path):
         f = tmp_path / "csv.yaml"
-        f.write_text(
-            "spec:\n"
-            "  relatedImages:\n"
-            "    - name: img\n"
-            "      image: quay.io/org/img:v1\n"
-        )
+        f.write_text("spec:\n  relatedImages:\n    - name: img\n      image: quay.io/org/img:v1\n")
         (tmp_path / "deploy.yaml").write_text("image: quay.io/org/img:v2")
         result = check_static_csv_pattern(tmp_path)
         assert result.passed is True
@@ -600,10 +548,7 @@ class TestParamsEnvDirsSkipped:
         base = tmp_path / "config" / "base"
         base.mkdir(parents=True)
         (overlay / "params.env").write_text("RELATED_IMAGE_FOO=quay.io/org/foo:v1\n")
-        (overlay / "kustomization.yaml").write_text(
-            "resources:\n"
-            "- ../../base\n"
-        )
+        (overlay / "kustomization.yaml").write_text("resources:\n- ../../base\n")
         (base / "kustomization.yaml").write_text("resources:\n- manager.yaml\n")
         (base / "manager.yaml").write_text("image: quay.io/org/hardcoded:v1\n")
         return overlay, base
@@ -615,6 +560,7 @@ class TestParamsEnvDirsSkipped:
         (outside / "deploy.yaml").write_text("image: quay.io/org/outside:v1\n")
 
         from rules.common import find_params_env_dirs
+
         pe_dirs = find_params_env_dirs(tmp_path)
         refs = scan_for_image_refs(tmp_path, params_env_dirs=pe_dirs)
         images = [img for _, _, img in refs]
@@ -625,9 +571,7 @@ class TestParamsEnvDirsSkipped:
         self._make_params_env_layout(tmp_path)
         pkg = tmp_path / "pkg"
         pkg.mkdir()
-        (pkg / "images.go").write_text(
-            '"RELATED_IMAGE_A"\n' * 6
-        )
+        (pkg / "images.go").write_text('"RELATED_IMAGE_A"\n' * 6)
         result = check_env_var_pattern(tmp_path)
         managed_findings = [f for f in result.findings if "hardcoded" in f.image]
         assert len(managed_findings) == 0
@@ -638,7 +582,8 @@ class TestParamsEnvDirsSkipped:
         outside.mkdir()
         (outside / "deploy.yaml").write_text("image: quay.io/org/outside:v1\n")
         result = check_unmanaged_images(
-            tmp_path, manifest_env_vars={"RELATED_IMAGE_FOO"},
+            tmp_path,
+            manifest_env_vars={"RELATED_IMAGE_FOO"},
         )
         images = [f.image for f in result.findings if f.image]
         assert "quay.io/org/hardcoded:v1" not in images

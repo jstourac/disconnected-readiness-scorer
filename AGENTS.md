@@ -94,6 +94,30 @@ All rules output JSON to stdout with `rule`, `passed`, and `findings` fields.
 | blocker  | Will or may break disconnected — must be fixed or granted an exception     |
 | info     | Excluded file, configurable pattern, or informational — does not block     |
 
+## Code Quality
+
+Python code quality is managed via [ruff](https://docs.astral.sh/ruff/), a fast Python linter and formatter.
+
+```bash
+# Lint and auto-fix violations
+uv run ruff check .                  # Check for violations
+uv run ruff check . --fix            # Auto-fix safe violations
+uv run ruff format .                 # Format code
+
+# Check without modifying
+uv run ruff check . --no-fix         # Lint only (no fixes)
+uv run ruff format --check .         # Verify formatting (CI mode)
+```
+
+**Configuration:** Located in `ruff.toml`. Targets Python 3.12+ with comprehensive rule set including:
+- Core style (E/W/F/I): pycodestyle errors, warnings, Pyflakes, isort
+- Modern Python (UP): Type hint modernization (List[T] → list[T], Optional[T] → T | None)
+- Code quality (B/C4/PIE/RET/SIM): bugbear, comprehensions, simplification, returns
+
+CI runs `ruff check` and `ruff format --check` before tests. PRs are blocked on style violations. Install pre-commit hooks with `pre-commit install` for local enforcement.
+
+**VS Code integration:** Install the [Ruff extension](https://marketplace.visualstudio.com/items?itemName=charliermarsh.ruff) for real-time linting and formatting.
+
 ## Post-Change Checklist
 
 After modifying rules, config, or architecture, update `README.md` and `AGENTS.md` to reflect the changes. Both files document rule behavior, config options, exceptions, and architecture — they must stay in sync with the code.

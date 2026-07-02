@@ -12,16 +12,12 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
-
 
 PROBE_SENTINEL = "probe.test/verify-params-env:check"
 SKIP_DIRS = {".git", "vendor", "node_modules", "__pycache__"}
-DEFAULT_PARAMS_ENV_FILENAMES: List[str] = ["params.env"]
+DEFAULT_PARAMS_ENV_FILENAMES: list[str] = ["params.env"]
 
-_IMAGE_RE = re.compile(
-    r"[a-zA-Z0-9._-]+/[a-zA-Z0-9._/-]+(?::[a-zA-Z0-9._-]+|@sha256:[a-f0-9]+)"
-)
+_IMAGE_RE = re.compile(r"[a-zA-Z0-9._-]+/[a-zA-Z0-9._/-]+(?::[a-zA-Z0-9._-]+|@sha256:[a-f0-9]+)")
 _UNQUALIFIED_IMAGE_RE = re.compile(
     r"(?:^|\s)image:\s*([a-zA-Z][\w._-]+(?::[a-zA-Z0-9._-]+|@sha256:[a-f0-9]+))",
     re.MULTILINE,
@@ -82,23 +78,19 @@ def kustomize_build(overlay_dir: Path) -> str:
         timeout=120,
     )
     if result.returncode != 0:
-        raise RuntimeError(
-            f"kustomize build failed for {overlay_dir}:\n{result.stderr}"
-        )
+        raise RuntimeError(f"kustomize build failed for {overlay_dir}:\n{result.stderr}")
     return result.stdout
 
 
 def _looks_like_image(value: str) -> bool:
-    if value.startswith("/") or value.startswith("./"):
+    if value.startswith(("/", "./")):
         return False
     if "/" in value:
         return True
-    if ":" in value or "@" in value:
-        return True
-    return False
+    return bool(":" in value or "@" in value)
 
 
-def parse_params_env(params_path: Path) -> Dict[str, str]:
+def parse_params_env(params_path: Path) -> dict[str, str]:
     entries = {}
     if not params_path.exists():
         return entries
@@ -118,21 +110,21 @@ def parse_params_env(params_path: Path) -> Dict[str, str]:
 
 def find_params_env_files(
     overlay_dir: Path,
-    filenames: Optional[List[str]] = None,
-) -> List[Path]:
+    filenames: list[str] | None = None,
+) -> list[Path]:
     if filenames is None:
         filenames = DEFAULT_PARAMS_ENV_FILENAMES
-    params_files: List[Path] = []
-    visited: Set[Path] = set()
+    params_files: list[Path] = []
+    visited: set[Path] = set()
     _collect_params_env(overlay_dir, params_files, visited, filenames)
     return params_files
 
 
 def _collect_params_env(
     overlay_dir: Path,
-    result: List[Path],
-    visited: Set[Path],
-    filenames: Optional[List[str]] = None,
+    result: list[Path],
+    visited: set[Path],
+    filenames: list[str] | None = None,
 ):
     if filenames is None:
         filenames = DEFAULT_PARAMS_ENV_FILENAMES
@@ -170,13 +162,13 @@ def _collect_params_env(
 
 def discover_overlays(
     repo_root: Path,
-    filenames: Optional[List[str]] = None,
-) -> List[Path]:
+    filenames: list[str] | None = None,
+) -> list[Path]:
     if filenames is None:
         filenames = DEFAULT_PARAMS_ENV_FILENAMES
-    seen_overlays: Set[Path] = set()
-    overlays: List[Path] = []
-    all_env_files: List[Path] = []
+    seen_overlays: set[Path] = set()
+    overlays: list[Path] = []
+    all_env_files: list[Path] = []
     for fname in filenames:
         all_env_files.extend(repo_root.rglob(fname))
     for params_env in sorted(set(all_env_files)):
@@ -191,9 +183,7 @@ def discover_overlays(
     return overlays
 
 
-
-
-def write_probe_params_env(params_path: Path, dest_path: Path, ignored_keys: Set[str]):
+def write_probe_params_env(params_path: Path, dest_path: Path, ignored_keys: set[str]):
     lines = []
     for line in params_path.read_text().splitlines():
         stripped = line.strip()
@@ -211,10 +201,10 @@ def write_probe_params_env(params_path: Path, dest_path: Path, ignored_keys: Set
 
 def create_probe_overlay(
     overlay_dir: Path,
-    params_files: List[Path],
+    params_files: list[Path],
     tmp_base: Path,
-    ignored_keys: Set[str],
-) -> Optional[Path]:
+    ignored_keys: set[str],
+) -> Path | None:
     """Returns None if params_files fall outside the overlay's config root."""
     overlay_resolved = overlay_dir.resolve()
 
@@ -224,10 +214,7 @@ def create_probe_overlay(
     if config_root.name != "config":
         config_root = overlay_resolved.parent
 
-    local_params = [
-        p for p in params_files
-        if p.resolve().is_relative_to(config_root)
-    ]
+    local_params = [p for p in params_files if p.resolve().is_relative_to(config_root)]
     if not local_params:
         return None
 
@@ -254,8 +241,8 @@ def create_probe_overlay(
     return tmp_config / rel_overlay
 
 
-def extract_all_images(rendered: str, exclude_patterns: List[str]) -> Dict[str, List[str]]:
-    images: Dict[str, List[str]] = {}
+def extract_all_images(rendered: str, exclude_patterns: list[str]) -> dict[str, list[str]]:
+    images: dict[str, list[str]] = {}
     for doc in rendered.split("\n---\n"):
         kind = ""
         name = ""
@@ -272,7 +259,7 @@ def extract_all_images(rendered: str, exclude_patterns: List[str]) -> Dict[str, 
 
         # For ConfigMaps, track which data key each line belongs to so the
         # location string can include [key=<name>] for precise exception matching.
-        cm_data_key: Optional[str] = None
+        cm_data_key: str | None = None
         in_data_section = False
         lines = doc.splitlines()
         for line in lines:
@@ -311,20 +298,20 @@ def extract_all_images(rendered: str, exclude_patterns: List[str]) -> Dict[str, 
     return images
 
 
-def extract_configmap_key_refs(rendered: str) -> Set[str]:
+def extract_configmap_key_refs(rendered: str) -> set[str]:
     keys = {m.group(1) for m in _CONFIGMAP_KEY_REF_RE.finditer(rendered)}
     keys |= {m.group(1) for m in _CONFIGMAP_KEY_REF_ALT_RE.finditer(rendered)}
     return keys
 
 
-def extract_kustomize_replacement_keys(overlay_dir: Path) -> Set[str]:
-    keys: Set[str] = set()
-    visited: Set[Path] = set()
+def extract_kustomize_replacement_keys(overlay_dir: Path) -> set[str]:
+    keys: set[str] = set()
+    visited: set[Path] = set()
     _collect_replacement_keys(overlay_dir, keys, visited)
     return keys
 
 
-def _collect_replacement_keys(overlay_dir: Path, keys: Set[str], visited: Set[Path]):
+def _collect_replacement_keys(overlay_dir: Path, keys: set[str], visited: set[Path]):
     resolved = overlay_dir.resolve()
     if resolved in visited:
         return
@@ -353,7 +340,7 @@ def _collect_replacement_keys(overlay_dir: Path, keys: Set[str], visited: Set[Pa
                     in_resources = False
 
 
-def extract_env_configmap_mappings(rendered: str) -> List[Tuple[str, str, str]]:
+def extract_env_configmap_mappings(rendered: str) -> list[tuple[str, str, str]]:
     results = [
         (m.group(1), m.group(2), m.group(3))
         for m in _ENV_NAME_BEFORE_CONFIGMAP_RE.finditer(rendered)
@@ -365,8 +352,8 @@ def extract_env_configmap_mappings(rendered: str) -> List[Tuple[str, str, str]]:
     return results
 
 
-def find_go_related_image_envs(repo_root: Path) -> Set[str]:
-    envs: Set[str] = set()
+def find_go_related_image_envs(repo_root: Path) -> set[str]:
+    envs: set[str] = set()
     if not repo_root.is_dir():
         return envs
     for go_file in repo_root.rglob("*.go"):

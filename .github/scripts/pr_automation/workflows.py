@@ -6,24 +6,29 @@ All workflow-related functionality including detection, template rendering,
 and workflow management.
 """
 
-from ruamel.yaml import YAML
-from typing import Tuple, List
-from dataclasses import dataclass
 import io
+from dataclasses import dataclass
 
-from github import UnknownObjectException, GithubException
+from github import GithubException, UnknownObjectException
+from ruamel.yaml import YAML
 
-from .utils import retry_github_operation, READY_FOR_WORKFLOW, ALREADY_HAS_WORKFLOW, ARCHIVED_REPOSITORY
 from .config import AutomationConfig
+from .utils import (
+    ALREADY_HAS_WORKFLOW,
+    ARCHIVED_REPOSITORY,
+    READY_FOR_WORKFLOW,
+    retry_github_operation,
+)
 
 
 @dataclass
 class UpdateResult:
     """Result of workflow update analysis."""
+
     needs_update: bool = False
     structure_updated: bool = False
-    new_parameters: List[str] = None
-    removed_parameters: List[str] = None
+    new_parameters: list[str] = None
+    removed_parameters: list[str] = None
 
     def __post_init__(self):
         if self.new_parameters is None:
@@ -35,24 +40,27 @@ class UpdateResult:
 class WorkflowDetector:
     """Handles workflow detection and repository processing decisions."""
 
-    def has_disconnected_workflow(self, repo) -> Tuple[bool, str]:
+    def has_disconnected_workflow(self, repo) -> tuple[bool, str]:
         """Check if repository already has disconnected readiness workflow or pending PR."""
         try:
-            repo.get_contents('.github/workflows/disconnected-readiness.yml')
+            repo.get_contents(".github/workflows/disconnected-readiness.yml")
             return True, "Workflow file exists"
         except UnknownObjectException:
             pass  # File doesn't exist, continue to check for pending PRs
 
         # Check for specific fixed branch names instead of patterns
-        fixed_branches = ['drs-workflow-add', 'drs-workflow-update', 'drs-template-update']
+        fixed_branches = ["drs-workflow-add", "drs-workflow-update", "drs-template-update"]
 
         for branch_name in fixed_branches:
             try:
                 # Check if our branch exists
                 repo.get_git_ref(f"heads/{branch_name}")
+
                 # If branch exists, check if there's an open PR from it
-                def _get_branch_prs():
-                    return list(repo.get_pulls(state='open', head=f"{repo.owner.login}:{branch_name}"))
+                def _get_branch_prs(branch_name=branch_name):
+                    return list(
+                        repo.get_pulls(state="open", head=f"{repo.owner.login}:{branch_name}")
+                    )
 
                 open_prs = retry_github_operation(_get_branch_prs)
                 if open_prs:
@@ -67,7 +75,7 @@ class WorkflowDetector:
 
         return False, "No workflow found"
 
-    def should_process_repository(self, repo) -> Tuple[bool, str]:
+    def should_process_repository(self, repo) -> tuple[bool, str]:
         """Determine if repository should be processed."""
         # Check if already has workflow
         has_workflow, workflow_reason = self.has_disconnected_workflow(repo)
@@ -91,15 +99,16 @@ class TemplateRenderer:
         """Render workflow template."""
         template_path = self.config.get_workflow_template_path()
 
-        with open(template_path, 'r') as f:
+        with open(template_path) as f:
             return f.read()
-
 
 
 class SimpleWorkflowManager:
     """Simple workflow management with addition-only principle."""
 
-    def update_workflow_safe(self, existing_content: str, template_content: str) -> tuple[str, UpdateResult]:
+    def update_workflow_safe(
+        self, existing_content: str, template_content: str
+    ) -> tuple[str, UpdateResult]:
         """
         Update workflow safely with simple rules:
         1. Always update 'uses' path to mimic what is present in the template
@@ -117,17 +126,17 @@ class SimpleWorkflowManager:
 
             result = UpdateResult()
 
-            current_uses = existing['jobs']['check'].get('uses', '')
-            template_uses = template['jobs']['check']['uses']
+            current_uses = existing["jobs"]["check"].get("uses", "")
+            template_uses = template["jobs"]["check"]["uses"]
 
             if current_uses != template_uses:
-                existing['jobs']['check']['uses'] = template_uses
+                existing["jobs"]["check"]["uses"] = template_uses
                 result.structure_updated = True
                 result.needs_update = True
 
             # 'with' section: ADD missing parameters, REMOVE deprecated ones, preserve team customizations
-            existing_with = existing['jobs']['check'].get('with', {})
-            template_with = template['jobs']['check']['with']
+            existing_with = existing["jobs"]["check"].get("with", {})
+            template_with = template["jobs"]["check"]["with"]
 
             # Dynamic comparison approach: template defines what should exist
             template_params = set(template_with.keys())
@@ -148,7 +157,7 @@ class SimpleWorkflowManager:
                 result.needs_update = True
 
             # Update the workflow structure with the modified 'with' section
-            existing['jobs']['check']['with'] = existing_with
+            existing["jobs"]["check"]["with"] = existing_with
 
             # Generate updated content using string buffer to maintain formatting
             output_buffer = io.StringIO()
@@ -157,7 +166,7 @@ class SimpleWorkflowManager:
             return updated_content, result
 
         except Exception as e:
-            raise Exception(f"Failed to update workflow: {e}")
+            raise Exception(f"Failed to update workflow: {e}") from e
 
     def generate_enhancement_pr_body(self, result: UpdateResult) -> str:
         """Generate simple PR body explaining what changed."""
@@ -183,5 +192,3 @@ class SimpleWorkflowManager:
         body += "**Generated by:** [DRS Automation](https://github.com/opendatahub-io/disconnected-readiness-scorer)"
 
         return body
-
-

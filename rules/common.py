@@ -1,27 +1,34 @@
 import subprocess
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
-from typing import Optional
 
 
-class Severity(str, Enum):
+class Severity(StrEnum):
     BLOCKER = "blocker"
     INFO = "info"
 
 
 # Domains that look like image registries but are Go/module hosts, not container registries.
-NON_REGISTRY_DOMAINS = frozenset({
-    "github.com", "gitlab.com", "bitbucket.org",
-    "golang.org", "google.golang.org", "gopkg.in",
-    "k8s.io", "sigs.k8s.io",
-    "openshift.io",
-})
+NON_REGISTRY_DOMAINS = frozenset(
+    {
+        "github.com",
+        "gitlab.com",
+        "bitbucket.org",
+        "golang.org",
+        "google.golang.org",
+        "gopkg.in",
+        "k8s.io",
+        "sigs.k8s.io",
+        "openshift.io",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
 # Arch-analyzer typed output
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class CopyInstruction:
@@ -66,10 +73,7 @@ class ArchAnalyzerResult:
                 path=df.get("path", ""),
                 copy_instructions=[
                     CopyInstruction(
-                        original_sources=(
-                            ci.get("original_sources")
-                            or ci.get("sources") or []
-                        ),
+                        original_sources=(ci.get("original_sources") or ci.get("sources") or []),
                         manifest_hint=ci.get("manifest_hint") or False,
                     )
                     for ci in (df.get("copy_instructions") or [])
@@ -115,8 +119,7 @@ class Finding:
             self.severity = Severity(self.severity)
         except (TypeError, ValueError) as exc:
             raise ValueError(
-                f"Invalid severity '{self.severity}'. "
-                f"Must be one of: {[s.value for s in Severity]}"
+                f"Invalid severity '{self.severity}'. Must be one of: {[s.value for s in Severity]}"
             ) from exc
 
 
@@ -131,15 +134,17 @@ class RuleResult:
 
 @dataclass
 class ProductionScope:
-    method: str            # e.g. "arch-analyzer-original-sources"
-    manifest_files: Optional[set] = None  # resolved YAML paths in kustomize/helm graph
-    manifest_source: Optional[str] = None  # e.g. "config" (source folder)
-    overlay_paths: Optional[list] = None   # operator-deployed overlay dirs
-    production_dirs: Optional[set] = None  # resolved dirs from original_sources (all file types)
-    production_files: Optional[set] = None # resolved individual file paths (e.g. go.mod at repo root)
+    method: str  # e.g. "arch-analyzer-original-sources"
+    manifest_files: set | None = None  # resolved YAML paths in kustomize/helm graph
+    manifest_source: str | None = None  # e.g. "config" (source folder)
+    overlay_paths: list | None = None  # operator-deployed overlay dirs
+    production_dirs: set | None = None  # resolved dirs from original_sources (all file types)
+    production_files: set | None = None  # resolved individual file paths (e.g. go.mod at repo root)
 
 
-def is_yaml_in_production_scope(filepath: Path, production_scope: Optional[ProductionScope]) -> Optional[bool]:
+def is_yaml_in_production_scope(
+    filepath: Path, production_scope: ProductionScope | None
+) -> bool | None:
     """Check whether a YAML file is inside the manifest production scope.
 
     Returns True (in scope), False (out of scope), or None (unknown / scope
@@ -153,7 +158,9 @@ def is_yaml_in_production_scope(filepath: Path, production_scope: Optional[Produ
     return filepath.resolve() in production_scope.manifest_files
 
 
-def is_file_in_production_scope(filepath: Path, production_scope: Optional[ProductionScope]) -> Optional[bool]:
+def is_file_in_production_scope(
+    filepath: Path, production_scope: ProductionScope | None
+) -> bool | None:
     """Check whether ANY file type is inside the production scope.
 
     Returns True (in scope), False (out of scope), or None (unknown / scope not computed).
@@ -236,7 +243,9 @@ def is_non_production_overlay_file(
 SKIP_DIRS = {".git", "vendor", "node_modules", "__pycache__", ".tox", ".devcontainer"}
 
 
-def production_scope_relative_dirs(production_scope: Optional[ProductionScope], repo_root: Path) -> list[str] | None:
+def production_scope_relative_dirs(
+    production_scope: ProductionScope | None, repo_root: Path
+) -> list[str] | None:
     if production_scope is None or not production_scope.production_dirs:
         return None
     resolved_root = repo_root.resolve()
@@ -293,9 +302,6 @@ def _collect_kustomize_tree(overlay_dir: Path, dirs: set[Path]):
                 in_resources = False
 
 
-
-
-
 class ConfigError(Exception):
     """Raised when a config file exists but cannot be read or parsed."""
 
@@ -320,18 +326,18 @@ def load_config_file(config_path: Path) -> dict:
     if result is None:
         return {}
     if not isinstance(result, dict):
-        raise ConfigError(
-            f"{config_path} must be a YAML mapping, got {type(result).__name__}"
-        )
+        raise ConfigError(f"{config_path} must be a YAML mapping, got {type(result).__name__}")
     return result
 
 
-def get_tracked_files(repo_root: Path) -> Optional[set[Path]]:
+def get_tracked_files(repo_root: Path) -> set[Path] | None:
     """Return git-tracked files as resolved Paths, or None if not a git repo."""
     try:
         result = subprocess.run(
             ["git", "-C", str(repo_root), "ls-files", "-z"],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         if result.returncode != 0:
             return None

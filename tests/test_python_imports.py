@@ -1,13 +1,11 @@
 """Tests for rules/python_imports.py"""
 
-from pathlib import Path
-
 from rules.python_imports import (
-    check_requirements_file, check_runtime_pip_installs,
-    run, KNOWN_BUNDLED,
+    KNOWN_BUNDLED,
+    check_requirements_file,
+    check_runtime_pip_installs,
+    run,
 )
-
-
 
 
 class TestCheckRequirementsFile:
@@ -85,7 +83,7 @@ class TestCheckRequirementsFile:
 
     def test_unreadable_file(self, tmp_path):
         f = tmp_path / "requirements.txt"
-        f.write_bytes(b'\x80\x81\x82' * 100)
+        f.write_bytes(b"\x80\x81\x82" * 100)
         findings = check_requirements_file(f, tmp_path, KNOWN_BUNDLED)
         assert findings == []
 
@@ -113,7 +111,7 @@ class TestCheckRuntimePipInstalls:
 
     def test_unreadable_file(self, tmp_path):
         f = tmp_path / "bad.py"
-        f.write_bytes(b'\x80\x81\x82' * 100)
+        f.write_bytes(b"\x80\x81\x82" * 100)
         findings = check_runtime_pip_installs(f, tmp_path)
         assert findings == []
 
@@ -184,7 +182,6 @@ class TestRun:
         f.write_text('subprocess.run(["pip", "install", "pkg"])')
         result = run(str(tmp_path))
         assert result.passed is True
-
 
     def test_nested_requirements_found(self, tmp_path):
         sub = tmp_path / "subdir"

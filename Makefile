@@ -21,9 +21,25 @@ skillsaw-fix: ## Auto-fix fixable skillsaw issues
 		uvx skillsaw fix; \
 	fi
 
+.PHONY: ruff-check
+ruff-check: ## Check Python code with ruff
+	@echo "Running ruff check..."
+	@uv run ruff check .
+
+.PHONY: ruff-fix
+ruff-fix: ## Auto-fix ruff violations
+	@echo "Fixing ruff issues..."
+	@uv run ruff check . --fix
+
+.PHONY: ruff-format
+ruff-format: ## Format Python code with ruff
+	@echo "Formatting Python code..."
+	@uv run ruff format .
+
 .PHONY: lint
 lint: ## Run all linters
 	@$(MAKE) skillsaw
+	@$(MAKE) ruff-check
 
 ARCH_ANALYZER_VERSION ?= v0.1.1
 ARCH_ANALYZER_REPO := ugiordan/architecture-analyzer
