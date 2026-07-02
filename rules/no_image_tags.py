@@ -10,12 +10,14 @@ try:
         Finding, RuleResult, get_tracked_files, is_file_in_production_scope,
         SKIP_DIRS, find_params_env_dirs, build_overlay_file_map,
         is_non_production_overlay_file, production_scope_relative_dirs,
+        NON_REGISTRY_DOMAINS,
     )
 except ModuleNotFoundError:
     from common import (
         Finding, RuleResult, get_tracked_files, is_file_in_production_scope,
         SKIP_DIRS, find_params_env_dirs, build_overlay_file_map,
         is_non_production_overlay_file, production_scope_relative_dirs,
+        NON_REGISTRY_DOMAINS,
     )
 
 IMAGE_REF_PATTERN = re.compile(
@@ -104,6 +106,9 @@ def scan_file(
                 if any(len(p) <= 1 for p in repo_part.split("/")):
                     continue
                 if ref_part.startswith("@sha256:"):
+                    continue
+                domain = repo_part.split("/")[0].split(":")[0]
+                if domain in NON_REGISTRY_DOMAINS:
                     continue
                 if non_image_prefixes and any(repo_part.startswith(p) for p in non_image_prefixes):
                     continue

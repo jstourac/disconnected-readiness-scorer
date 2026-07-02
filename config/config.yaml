@@ -150,6 +150,68 @@ exceptions:
     message: "*ConfigMap/inferenceservice-config{key:_example}*"
     reason: "_example is a documentation-only field in inferenceservice-config — not functional configuration"
 
+  # RHOAIENG-69993: Disconnected Readiness exceptions
+  # Upstream default kustomize paths — ODH uses config/overlays/odh/
+  - rules:
+      - image-manifest-complete
+      - no-image-tags
+    repo: kserve
+    paths:
+      - "config/default/**"
+      - "config/runtimes/**"
+      - "config/localmodelnodes/**"
+      - "config/localmodels/**"
+      - "config/llmisvcconfig/**"
+      - "config/llmisvc/**"
+      - "config/overlays/version-template/**"
+    reason: "Upstream KServe default kustomize — ODH/RHOAI uses config/overlays/odh/ which wires images through params.env and RELATED_IMAGE_* mechanism"
+
+  # Sample/test Go code not in production binary
+  - rules:
+      - image-manifest-complete
+      - no-image-tags
+    repo: kserve
+    paths:
+      - "pkg/controller/v1alpha2/llmisvc/sample.go"
+      - "pkg/controller/v1beta1/inferenceservice/tests_common.go"
+    reason: "Sample/test Go code with hardcoded images — not compiled into production binary"
+
+  # Orphan RELATED_IMAGE FAST vars — feature pending GA
+  - rules: image-manifest-complete
+    repo: kserve
+    paths:
+      - "kserve-module/pkg/kservemodule/images.go"
+    message: "*RELATED_IMAGE*FAST*"
+    reason: "Fast model update RELATED_IMAGE vars — operator wiring pending for this feature"
+    expires: "2026-07-24"
+    reference: "https://issues.redhat.com/browse/RHOAIENG-68059"
+
+  # Test-only constant for OAuth proxy image
+  - rules: image-manifest-complete
+    repo: kserve
+    paths:
+      - "pkg/constants/constants_odh.go"
+    message: "*odh-kube-auth-proxy*"
+    reason: "Test-only constant — OauthProxyImage only used in *_test.go and tests_common.go files, not in production code. Comment at line 54 confirms 'Used for test purposes'"
+
+  # LocalModelNode controller default storage-initializer image
+  - rules:
+      - no-image-tags
+      - image-manifest-complete
+    repo: kserve
+    paths:
+      - "pkg/controller/v1alpha1/localmodelnode/controller.go"
+    message: "*storage-initializer*"
+    reason: "Default fallback image — overridden at runtime via inferenceservice-config ConfigMap, params.env wires kserve-storage-initializer to RELATED_IMAGE_ODH_KSERVE_STORAGE_INITIALIZER_IMAGE which injects the digest-pinned image"
+
+  # Modelcar init container ubi-micro — no-image-tags is secondary to image-manifest-complete fix
+  - rules: no-image-tags
+    repo: kserve
+    paths:
+      - "pkg/webhook/admission/pod/storage_initializer_injector.go"
+    message: "*ubi-micro*"
+    reason: "Modelcar init container default — tag is replaced by digest-pinned image via RELATED_IMAGE_* injection at runtime. The image-manifest-complete blocker for this line is tracked separately for a code fix in kserve"
+
   # --- kuberay ---
   - rules: "*"
     repo: kuberay

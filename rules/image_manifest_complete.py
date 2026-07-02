@@ -22,12 +22,14 @@ try:
         Finding, RuleResult, get_tracked_files, is_file_in_production_scope,
         SKIP_DIRS, find_params_env_dirs, build_overlay_file_map,
         is_non_production_overlay_file, production_scope_relative_dirs,
+        NON_REGISTRY_DOMAINS,
     )
 except ModuleNotFoundError:
     from common import (
         Finding, RuleResult, get_tracked_files, is_file_in_production_scope,
         SKIP_DIRS, find_params_env_dirs, build_overlay_file_map,
         is_non_production_overlay_file, production_scope_relative_dirs,
+        NON_REGISTRY_DOMAINS,
     )
 
 IMAGE_REF_PATTERN = re.compile(
@@ -53,14 +55,6 @@ GO_IMAGE_ASSIGN_PATTERN = re.compile(
 DIGEST_PATTERN = re.compile(r'@sha256:[a-f0-9]{64}')
 TAG_PATTERN = re.compile(r':[\w][\w.\-]*$')
 RELATED_IMAGE_PATTERN = re.compile(r'RELATED_IMAGE_[A-Z0-9_]+')
-
-NON_REGISTRY_DOMAINS = {
-    "github.com", "gitlab.com", "bitbucket.org",
-    "golang.org", "google.golang.org", "gopkg.in",
-    "k8s.io", "sigs.k8s.io",
-    "openshift.io",
-}
-
 
 
 def detect_image_pattern(repo_root: Path) -> str:

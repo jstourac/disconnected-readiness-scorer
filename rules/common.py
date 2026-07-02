@@ -10,6 +10,15 @@ class Severity(str, Enum):
     INFO = "info"
 
 
+# Domains that look like image registries but are Go/module hosts, not container registries.
+NON_REGISTRY_DOMAINS = frozenset({
+    "github.com", "gitlab.com", "bitbucket.org",
+    "golang.org", "google.golang.org", "gopkg.in",
+    "k8s.io", "sigs.k8s.io",
+    "openshift.io",
+})
+
+
 # ---------------------------------------------------------------------------
 # Arch-analyzer typed output
 # ---------------------------------------------------------------------------

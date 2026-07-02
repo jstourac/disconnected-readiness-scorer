@@ -8,6 +8,7 @@ from rules.common import (
     ArchAnalyzerResult,
     ConfigError,
     Finding,
+    NON_REGISTRY_DOMAINS,
     ProductionScope,
     RuleResult,
     Severity,
@@ -24,6 +25,15 @@ class TestSeverity:
 
     def test_is_str_subclass(self):
         assert isinstance(Severity.BLOCKER, str)
+
+
+class TestNonRegistryDomains:
+    def test_includes_go_module_hosts(self):
+        assert "sigs.k8s.io" in NON_REGISTRY_DOMAINS
+        assert "golang.org" in NON_REGISTRY_DOMAINS
+
+    def test_excludes_container_registries(self):
+        assert "quay.io" not in NON_REGISTRY_DOMAINS
 
 
 class TestFinding:
