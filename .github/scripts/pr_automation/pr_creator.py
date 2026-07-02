@@ -149,7 +149,7 @@ class PRCreator:
         # Use simple approach: only touch 'with' section, preserve everything else
         try:
             updated_content, update_workflow_result = self.workflow_manager.update_workflow_safe(
-                existing_content, template_content
+                existing_content, template_content, trigger_reason
             )
         except Exception as e:
             return PRCreationResult(
