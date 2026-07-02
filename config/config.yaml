@@ -183,7 +183,7 @@ exceptions:
       - "kserve-module/pkg/kservemodule/images.go"
     message: "*RELATED_IMAGE*FAST*"
     reason: "Fast model update RELATED_IMAGE vars — operator wiring pending for this feature"
-    expires: "2026-12-31"
+    expires: "2026-07-24"
     reference: "https://issues.redhat.com/browse/RHOAIENG-68059"
 
   # Test-only constant for OAuth proxy image
