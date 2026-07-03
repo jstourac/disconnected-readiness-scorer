@@ -1,0 +1,136 @@
+name: Create Release
+
+# Manual release workflow following industry standards for reusable workflows
+# Creates semantic version tags and GitHub releases
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g., v1.0.0, v1.1.0, v2.0.0)"
+        required: true
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    if: github.ref_name == github.event.repository.default_branch
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0 # Need full history for tag validation and template comparison
+          fetch-tags: true
+
+      - name: Validate version format
+        id: validate
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          VERSION="$INPUT_VERSION"
+
+          # Ensure version starts with 'v' and follows semantic versioning
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version format: $VERSION"
+            echo "Version must be in format: v1.0.0, v1.1.0, v2.0.0"
+            exit 1
+          fi
+
+          # Extract major version for floating tag
+          MAJOR_VERSION=$(echo "$VERSION" | cut -d. -f1)
+
+          # Check if tag already exists
+          if git tag --list | grep -q "^$VERSION$"; then
+            echo "Tag $VERSION already exists!"
+            echo "Release tags are immutable. Use a different version number."
+            exit 1
+          fi
+
+          echo "Version format valid: $VERSION"
+          echo "Tag $VERSION is available"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "major_version=$MAJOR_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update template for major version bump
+        env:
+          VERSION: ${{ steps.validate.outputs.version }}
+        run: |
+          # Generic major bump detection - works for any version (v1, v2, v3, etc.)
+          TEMPLATE_REF=$(grep -o '@v[0-9]\+' .github/templates/workflow.yml)
+          TEMPLATE_MAJOR=$(echo "$TEMPLATE_REF" | sed 's/@v//')
+          RELEASE_MAJOR=$(echo "$VERSION" | cut -d. -f1 | sed 's/v//')
+
+          if [[ "$TEMPLATE_MAJOR" -lt "$RELEASE_MAJOR" ]]; then
+            echo "Major version bump detected: template @v$TEMPLATE_MAJOR → @v$RELEASE_MAJOR"
+
+            # Update template - replace current major version with new one
+            sed -i "s|@v$TEMPLATE_MAJOR|@v$RELEASE_MAJOR|g" .github/templates/workflow.yml
+
+            echo "Template updated successfully"
+          else
+            echo "No template update needed: template @v$TEMPLATE_MAJOR matches release v$RELEASE_MAJOR"
+          fi
+
+      - name: Commit template changes
+        uses: stefanzweifel/git-auto-commit-action@8621497c8c39c72f3e2a999a26b4ca1b5058a842 # v5.0.1
+        with:
+          commit_message: "Update template to use @v${{ steps.validate.outputs.major_version }}"
+          file_pattern: ".github/templates/workflow.yml"
+          commit_user_name: "github-actions[bot]"
+          commit_user_email: "github-actions[bot]@users.noreply.github.com"
+          commit_author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+          skip_dirty_check: false
+          skip_fetch: false
+
+      - name: Create release tags
+        env:
+          VERSION: ${{ steps.validate.outputs.version }}
+          MAJOR_VERSION: ${{ steps.validate.outputs.major_version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Create immutable release tag with descriptive message (following ODH pattern)
+          git tag -a "$VERSION" -m "Disconnected Readiness Scorer Release $VERSION"
+
+          echo "Created annotated tag: $VERSION"
+
+          # Create/update floating major version tag (e.g., v1 for v1.0.0)
+          git tag -fa "$MAJOR_VERSION" -m "Update $MAJOR_VERSION to $VERSION"
+          echo "Updated floating tag: $MAJOR_VERSION -> $VERSION"
+
+          # Push both tags in a single command - force only the floating tag, not the immutable tag
+          # Note: Not atomic on server side - if floating tag fails, immutable tag may still be pushed
+          # Partial failure can be retried manually by re-running the workflow
+          git push origin "refs/tags/$VERSION:refs/tags/$VERSION" "+refs/tags/$MAJOR_VERSION:refs/tags/$MAJOR_VERSION"
+
+          echo "Successfully pushed tags to remote"
+          echo "   - Immutable Tag: $VERSION"
+          echo "   - Floating Tag: $MAJOR_VERSION -> $VERSION"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
+        with:
+          tag_name: ${{ steps.validate.outputs.version }}
+          name: Release ${{ steps.validate.outputs.version }}
+          generate_release_notes: true
+          prerelease: false
+
+      - name: Verify release success
+        env:
+          VERSION: ${{ steps.validate.outputs.version }}
+          MAJOR_VERSION: ${{ steps.validate.outputs.major_version }}
+        run: |
+          echo "Release $VERSION created successfully!"
+          echo "   - Immutable Tag: $VERSION"
+          echo "   - Floating Tag: $MAJOR_VERSION -> $VERSION"
+
+          echo "   - GitHub Release: Created with automated changelog"
+          echo ""
+          echo "Release URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/$VERSION"

@@ -7,6 +7,8 @@ and workflow management.
 """
 
 import io
+import os
+import re
 from dataclasses import dataclass
 
 from github import GithubException, UnknownObjectException
@@ -106,8 +108,83 @@ class TemplateRenderer:
 class SimpleWorkflowManager:
     """Simple workflow management with addition-only principle."""
 
+    def _should_propagate_update(
+        self, current_uses: str, template_uses: str, trigger_reason: str | None = None
+    ) -> tuple[bool, str]:
+        """
+        Decide if update should propagate based on current usage pattern.
+
+        Strategy:
+        1. Floating tag users (@v1) - only get PRs for major version changes (@v1 → @v2)
+           Minor/patch updates flow automatically via floating tags
+        2. Pinned users (@v1.2.3) - get PRs for any version update since they opted into manual control
+        3. Manual override always works regardless of version patterns
+        """
+        if trigger_reason is None:
+            trigger_reason = os.getenv("TRIGGER_REASON", "unknown")
+
+        # Extract reference patterns
+        current_ref_match = re.search(r"@(v[0-9]+(?:\.[0-9]+\.[0-9]+)?)", current_uses)
+        template_ref_match = re.search(r"@(v[0-9]+(?:\.[0-9]+\.[0-9]+)?)", template_uses)
+
+        if not current_ref_match or not template_ref_match:
+            return False, "Could not parse version references"
+
+        current_ref = current_ref_match.group(1)  # e.g., "v1" or "v1.2.3"
+        template_ref = template_ref_match.group(1)  # e.g., "v2" or "v2.0.0"
+
+        # Determine if current usage is floating tag or pinned version
+        is_floating_tag = "." not in current_ref  # v1 vs v1.2.3
+        is_pinned_version = "." in current_ref
+
+        # Parse major versions
+        current_major = int(current_ref.split(".")[0][1:])  # Extract major number from v1.2.3 or v1
+        template_major = int(
+            template_ref.split(".")[0][1:]
+        )  # Extract major number from v2.0.0 or v2
+
+        is_major_version_change = current_major != template_major
+
+        # Decision logic based on trigger and reference patterns
+        if trigger_reason == "template_change":
+            # Template file changed - always propagate
+            return True, "Template file updated - propagating to all repositories"
+
+        if trigger_reason == "manual":
+            # Manual execution - always propagate for review
+            return True, f"Manual execution - updating {current_ref} → {template_ref}"
+
+        if trigger_reason == "scheduled":
+            # Smart PR strategy based on usage pattern
+            if is_floating_tag:
+                # Floating tag users only get PRs for major version changes
+                if is_major_version_change:
+                    return (
+                        True,
+                        f"Scheduled: Major version update {current_ref} → {template_ref} (manual action required)",
+                    )
+                return (
+                    False,
+                    f"Scheduled: Minor/patch updates flow automatically via floating tag {current_ref}",
+                )
+
+            if is_pinned_version:
+                # Pinned users get PRs for any version change since they chose manual control
+                if current_ref != template_ref:
+                    return (
+                        True,
+                        f"Scheduled: Version update available {current_ref} → {template_ref} (pinned version user)",
+                    )
+                return False, f"Scheduled: Already at latest version {current_ref}"
+
+        # Default: fail closed for unrecognized trigger reasons (CWE-754)
+        return (
+            False,
+            f"Unknown trigger reason '{trigger_reason}' - refusing update to prevent misconfiguration. Valid triggers: template_change, scheduled, manual",
+        )
+
     def update_workflow_safe(
-        self, existing_content: str, template_content: str
+        self, existing_content: str, template_content: str, trigger_reason: str | None = None
     ) -> tuple[str, UpdateResult]:
         """
         Update workflow safely with simple rules:
@@ -129,10 +206,21 @@ class SimpleWorkflowManager:
             current_uses = existing["jobs"]["check"].get("uses", "")
             template_uses = template["jobs"]["check"]["uses"]
 
+            # Central Authority Logic: Determine if propagation should happen
+            should_propagate, propagation_reason = self._should_propagate_update(
+                current_uses, template_uses, trigger_reason
+            )
+
+            if not should_propagate:
+                print(f"    Skipping propagation: {propagation_reason}")
+                return existing_content, result
+
             if current_uses != template_uses:
                 existing["jobs"]["check"]["uses"] = template_uses
                 result.structure_updated = True
                 result.needs_update = True
+                print(f"    Propagating update: {current_uses} → {template_uses}")
+                print(f"    Reason: {propagation_reason}")
 
             # 'with' section: ADD missing parameters, REMOVE deprecated ones, preserve team customizations
             existing_with = existing["jobs"]["check"].get("with", {})
@@ -168,27 +256,49 @@ class SimpleWorkflowManager:
         except Exception as e:
             raise Exception(f"Failed to update workflow: {e}") from e
 
-    def generate_enhancement_pr_body(self, result: UpdateResult) -> str:
-        """Generate simple PR body explaining what changed."""
-        body = "This PR enhances your DRS workflow while preserving all your customizations.\n\n"
+    def generate_enhancement_pr_body(
+        self, result: UpdateResult, current_ref: str = "", template_ref: str = ""
+    ) -> str:
+        """Generate PR body explaining what changed, tailored to the update type."""
 
+        # Determine update type based on version patterns
+        is_floating_tag = current_ref and "." not in current_ref.replace("@", "")
+        is_major_version_change = (
+            current_ref and template_ref and current_ref.split(".")[0] != template_ref.split(".")[0]
+        )
+
+        if is_floating_tag and is_major_version_change:
+            # Major version update for floating tag users
+            body = f"**Major Version Update Available: {current_ref} → {template_ref}**\n\n"
+        elif current_ref and template_ref and not is_floating_tag:
+            # Updates for pinned version users (only when refs are available)
+            body = f"**Tool Update Available: {current_ref} → {template_ref}**\n\n"
+            body += "Please merge this to get the latest updates.\n\n"
+        else:
+            # Template changes or other updates (fallback when refs are missing)
+            body = "**DRS Workflow Enhancement**\n\n"
+            body += (
+                "This PR enhances your DRS workflow while preserving all your customizations.\n\n"
+            )
         if result.structure_updated:
-            body += "## Structure Updates\n"
-            body += "- Updated reusable workflow path to latest version\n\n"
-
-        if result.new_parameters:
-            body += "## New Optional Parameters Added\n"
-            for param in result.new_parameters:
-                body += f"- `{param}`: New optional parameter with default value\n"
-            body += "\n**You can customize these values** or remove parameters you don't need.\n\n"
-
-        if result.removed_parameters:
-            body += "## Deprecated Parameters Removed\n"
-            for param in result.removed_parameters:
-                body += f"- `{param}`: No longer supported in current template\n"
+            if current_ref and template_ref:
+                body += f"- Updated reusable workflow: `{current_ref}` → `{template_ref}`\n"
+            else:
+                body += "- Updated reusable workflow path to latest version\n"
             body += "\n"
 
-        body += "**Your existing customizations (rules, etc.) are unchanged.**\n\n"
+        if result.new_parameters:
+            body += "**New Parameters Added**\n"
+            for param in result.new_parameters:
+                body += f"- `{param}`\n"
+            body += "\n"
+
+        if result.removed_parameters:
+            body += "**Deprecated Parameters Removed**\n"
+            for param in result.removed_parameters:
+                body += f"- `{param}`\n"
+            body += "\n"
+
         body += "**Generated by:** [DRS Automation](https://github.com/opendatahub-io/disconnected-readiness-scorer)"
 
         return body

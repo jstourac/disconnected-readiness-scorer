@@ -6,6 +6,7 @@ Handles PR creation for disconnected readiness workflows including
 new workflow creation and enhancement of existing workflows.
 """
 
+import re
 from dataclasses import dataclass
 
 from github import UnknownObjectException
@@ -14,6 +15,12 @@ from .config import AutomationConfig
 from .github_client import GitHubClient
 from .utils import retry_github_operation
 from .workflows import SimpleWorkflowManager, TemplateRenderer, UpdateResult
+
+
+def _extract_version_ref(content: str) -> str:
+    """Extract version reference from workflow content (e.g., @v1, @v1.2.3)."""
+    match = re.search(r"uses:.*@(v[0-9]+(?:\.[0-9]+\.[0-9]+)?)", content)
+    return match.group(1) if match else ""
 
 
 @dataclass
@@ -142,7 +149,7 @@ class PRCreator:
         # Use simple approach: only touch 'with' section, preserve everything else
         try:
             updated_content, update_workflow_result = self.workflow_manager.update_workflow_safe(
-                existing_content, template_content
+                existing_content, template_content, trigger_reason
             )
         except Exception as e:
             return PRCreationResult(
@@ -183,9 +190,19 @@ class PRCreator:
                 reason=f"Would enhance workflow: {', '.join(update_details)}",
             )
 
+        # Extract version refs for PR body generation
+        current_ref = _extract_version_ref(existing_content)
+        template_ref = _extract_version_ref(template_content)
+
         # Create enhancement PR
         return self._create_enhancement_pr(
-            repo, existing_file, updated_content, update_workflow_result, branch_name_suffix
+            repo,
+            existing_file,
+            updated_content,
+            update_workflow_result,
+            branch_name_suffix,
+            current_ref,
+            template_ref,
         )
 
     def _create_new_workflow(
@@ -219,11 +236,13 @@ class PRCreator:
         enhanced_content: str,
         update_workflow_result: UpdateResult,
         branch_name_suffix: str,
+        current_ref: str = "",
+        template_ref: str = "",
     ) -> PRCreationResult:
         """Create PR for workflow enhancements."""
 
         pr_title = "Update DRS workflow with new changes"
-        pr_body = self._generate_enhanced_pr_body(update_workflow_result)
+        pr_body = self._generate_enhanced_pr_body(update_workflow_result, current_ref, template_ref)
 
         return self._update_workflow_pr(
             repo, existing_file, enhanced_content, pr_title, pr_body, branch_name_suffix
@@ -358,6 +377,10 @@ class PRCreator:
 **Generated automatically by:** [disconnected-readiness-scorer](https://github.com/opendatahub-io/disconnected-readiness-scorer)
 """
 
-    def _generate_enhanced_pr_body(self, update_workflow_result: UpdateResult) -> str:
+    def _generate_enhanced_pr_body(
+        self, update_workflow_result: UpdateResult, current_ref: str = "", template_ref: str = ""
+    ) -> str:
         """Generate complete enhancement PR body including workflow updates."""
-        return self.workflow_manager.generate_enhancement_pr_body(update_workflow_result)
+        return self.workflow_manager.generate_enhancement_pr_body(
+            update_workflow_result, current_ref, template_ref
+        )
